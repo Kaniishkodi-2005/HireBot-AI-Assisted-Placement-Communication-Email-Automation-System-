@@ -1,0 +1,77 @@
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: hirebot_mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: hirebot_db
+      MYSQL_USER: hirebot_user
+      MYSQL_PASSWORD: hirebot_password
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - hirebot_network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: hirebot_backend
+    environment:
+      APP_ENV: development
+      APP_NAME: HireBot API
+      USE_SQLITE: "false"
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_USER: hirebot_user
+      MYSQL_PASSWORD: hirebot_password
+      MYSQL_DB: hirebot_db
+      JWT_SECRET_KEY: your_super_secret_jwt_key_change_in_production_12345
+      JWT_ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: 60
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - backend_logs:/app/logs
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - hirebot_network
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: hirebot_frontend
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000/api/v1
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    networks:
+      - hirebot_network
+
+networks:
+  hirebot_network:
+    driver: bridge
+
+volumes:
+  mysql_data:
+  backend_logs:
+

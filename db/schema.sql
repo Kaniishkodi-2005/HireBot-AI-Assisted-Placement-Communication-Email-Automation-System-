@@ -1,0 +1,71 @@
+-- Initial MySQL schema for HireBot
+
+CREATE DATABASE IF NOT EXISTS hirebot_db;
+USE hirebot_db;
+
+CREATE TABLE IF NOT EXISTS users (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    email VARCHAR(255) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
+    organization VARCHAR(255) NOT NULL,
+    role VARCHAR(50) NOT NULL DEFAULT 'user',
+    is_active TINYINT(1) DEFAULT 1,
+    is_approved TINYINT(1) DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS hr_contacts (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    company VARCHAR(255) NOT NULL,
+    domain VARCHAR(255),
+    email VARCHAR(255) NOT NULL,
+    email_status VARCHAR(50),
+    draft_status VARCHAR(50),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS students (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    roll_no VARCHAR(50) NOT NULL UNIQUE,
+    name VARCHAR(255) NOT NULL,
+    department VARCHAR(255) NOT NULL,
+    domain VARCHAR(255) NOT NULL,
+    cgpa FLOAT NOT NULL,
+    ps_level INT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS placement_requirements (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    company VARCHAR(255) NOT NULL,
+    role VARCHAR(255) NOT NULL,
+    skills TEXT,
+    required_count INT NOT NULL DEFAULT 0,
+    raw_email_text TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS email_conversations (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    hr_contact_id INT NOT NULL,
+    subject VARCHAR(500) NOT NULL,
+    content TEXT NOT NULL,
+    direction VARCHAR(20) NOT NULL,
+    sent_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (hr_contact_id) REFERENCES hr_contacts(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS email_templates (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    subject VARCHAR(500) NOT NULL,
+    body TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+
+
+
