@@ -91,9 +91,13 @@ Return ONLY the JSON object, no other text."""
                 # Extract JSON from response
                 json_match = re.search(r'\{.*\}', result_text, re.DOTALL)
                 if json_match:
-                    intent_data = json.loads(json_match.group())
-                    print(f"[SUCCESS] Extracted intent: {intent_data}")
-                    return intent_data
+                    try:
+                        json_str = AIService._clean_json_text(json_match.group())
+                        intent_data = json.loads(json_str)
+                        print(f"[SUCCESS] Extracted intent: {intent_data}")
+                        return intent_data
+                    except json.JSONDecodeError as je:
+                        print(f"[WARNING] JSON decode error: {je}. Raw: {json_match.group()}")
                 else:
                     print("[WARNING] No JSON found in response, using fallback")
                     
@@ -104,6 +108,21 @@ Return ONLY the JSON object, no other text."""
         
         # Fallback: Rule-based extraction
         return AIService._fallback_intent_extraction(hr_message)
+
+    @staticmethod
+    def _clean_json_text(text: str) -> str:
+        """Clean JSON text from common LLM errors"""
+        # Replace single quotes with double quotes
+        # This is a bit risky if text contains ' inside strings, but often needed for weak LLMs
+        # Better approach: use a regex to replace keys 'key': with "key":
+        text = re.sub(r"'([^']*)'\s*:", r'"\1":', text)
+        
+        # Remove trailing commas before } or ]
+        text = re.sub(r',(\s*[}\]])', r'\1', text)
+        
+        return text
+        
+
     
     @staticmethod
     def _fallback_intent_extraction(hr_message: str) -> Dict:
@@ -257,12 +276,34 @@ Return ONLY the JSON object, no other text."""
         hr_lower = hr_message.lower()
         
         # Quick rule-based check for student requests
-        requesting_students = any([
-            'student' in hr_lower and any(word in hr_lower for word in ['need', 'require', 'send', 'share']),
-            'profile' in hr_lower and any(word in hr_lower for word in ['send', 'share']),
-            'candidate' in hr_lower and any(word in hr_lower for word in ['need', 'require']),
-            re.search(r'\d+\s*(?:students?|candidates?|profiles?)', hr_message, re.IGNORECASE)
-        ])
+        # Avoid false positives for acknowledgments like "will connect" or "thanks"
+        acknowledgment_phrases = ['will connect', 'get back', 'touch base', 'thank you', 'thanks', 'appreciate']
+        is_acknowledgment = any(phrase in hr_lower for phrase in acknowledgment_phrases)
+        
+        print(f"\n[CLASSIFY] HR Message: {hr_message[:100]}...")
+        print(f"[CLASSIFY] Is acknowledgment: {is_acknowledgment}")
+        
+        # Remove early return for acknowledgments - always check for student requests
+        # if not is_acknowledgment:
+        
+        checks = {
+            'student+keywords': 'student' in hr_lower and any(word in hr_lower for word in ['need', 'require', 'send', 'share', 'provide', 'list', 'namelist']),
+            'profile+keywords': 'profile' in hr_lower and any(word in hr_lower for word in ['send', 'share', 'provide', 'need', 'require']),
+            'candidate+keywords': 'candidate' in hr_lower and any(word in hr_lower for word in ['need', 'require', 'send', 'share', 'list']),
+            'resume+keywords': 'resume' in hr_lower and any(word in hr_lower for word in ['send', 'share', 'provide', 'need', 'require']),
+            'namelist': 'namelist' in hr_lower,
+            'name list': 'name list' in hr_lower,
+            'number pattern': bool(re.search(r'\d+\s*(?:students?|candidates?|profiles?|members?)', hr_message, re.IGNORECASE))
+        }
+        
+        requesting_students = any(checks.values())
+        
+        print(f"[CLASSIFY] Detection checks:")
+        for check_name, result in checks.items():
+            if result:
+                print(f"  + {check_name}: TRUE")
+        
+        print(f"[CLASSIFY] Final requesting_students: {requesting_students}")
         
         if OLLAMA_AVAILABLE:
             try:
@@ -329,48 +370,119 @@ Return ONLY this JSON:
         }
     
     @staticmethod
-    def generate_draft_reply(hr_message: str, company: str, students_data: Optional[List[Dict]] = None) -> Dict:
+    def _extract_latest_message(email_content: str) -> str:
         """
-        Generate AI-powered draft email reply with [DRAFT EMAIL — REQUIRES CONFIRMATION] header
+        Extract only the latest message from an email thread.
+        Removes quoted replies (lines starting with >, or content after 'On ... wrote:')
+        """
+        # Split by common email thread markers
+        thread_markers = [
+            '\nOn ',  # "On Mon, Jan 19, 2026 at 2:52 PM"
+            '\n\nOn ',
+            '\n> ',  # Quoted text
+            '\nFrom:',  # Email headers
+            '\n-----Original Message-----',
+        ]
+        
+        # Find the earliest thread marker
+        earliest_pos = len(email_content)
+        for marker in thread_markers:
+            pos = email_content.find(marker)
+            if pos != -1 and pos < earliest_pos:
+                earliest_pos = pos
+        
+        # Extract only the content before the thread marker
+        latest_message = email_content[:earliest_pos].strip()
+        
+        # Also remove lines that start with '>'
+        lines = latest_message.split('\n')
+        clean_lines = [line for line in lines if not line.strip().startswith('>')]
+        latest_message = '\n'.join(clean_lines).strip()
+        
+        return latest_message
+    
+    @staticmethod
+    def generate_draft_reply(hr_message: str, company: str, contact_name: Optional[str] = None, students_data: Optional[List[Dict]] = None) -> Dict:
+        """
+        Generate AI-powered draft email reply
         Returns: subject, body, extracted_intent, suggested_students, follow_up_actions
         """
+        # Extract only the latest message from the thread
+        clean_message = AIService._extract_latest_message(hr_message)
+        
+        # Extract student requirements from the message
+        from app.utils.student_requirements import extract_student_requirements
+        student_requirements = extract_student_requirements(clean_message)
+        
         print(f"\n{'='*60}")
         print(f"DRAFT GENERATION STARTED")
         print(f"Company: {company}")
-        print(f"Message: {hr_message[:150]}...")
+        print(f"Original message length: {len(hr_message)} chars")
+        print(f"Cleaned message length: {len(clean_message)} chars")
+        print(f"Cleaned message: {clean_message[:150]}...")
+        print(f"Student requirements extracted: {student_requirements}")
         print(f"{'='*60}\n")
         
-        # Extract intent first
-        intent = AIService.extract_intent(hr_message, company)
-        classification = AIService.classify_message(hr_message)
+        # Extract intent first - use cleaned message
+        intent = AIService.extract_intent(clean_message, company)
+        classification = AIService.classify_message(clean_message)
         
         requesting_students = classification.get('requesting_students', False)
+        
+        print(f"\n[DRAFT] Classification result: {classification}")
+        print(f"[DRAFT] Requesting students: {requesting_students}")
+        print(f"[DRAFT] Students data provided: {len(students_data) if students_data else 0} students\n")
         
         # Generate draft
         draft_body = ""
         
+        # Intelligently decide whether to include students based on HR message content
+        # Only include students if HR is actually requesting them AND we have student data
+        should_include_students = requesting_students and students_data and len(students_data) > 0
+        
         if OLLAMA_AVAILABLE:
             try:
-                if requesting_students and students_data:
+                if should_include_students:
                     # Generate intro for student list
+                    req_count = student_requirements.get('count')
+                    actual_count = len(students_data)
+                    domain = student_requirements.get('domain', 'requested')
+                    
+                    # 1. Prepare context for Intro
+                    shortfall_context = ""
+                    if req_count and actual_count < req_count:
+                        shortfall_context = f"""
+IMPORTANT: The HR requested {req_count} students, but we only have {actual_count} suitable candidates.
+You MUST explicitly state this in the intro.
+REQUIRED PHRASING: "Thank you for your interest in our students. As of now, we have shortlisted {actual_count} suitable students who meet your requirements in the {domain} domain. The details are shared below:"
+"""
+                    else:
+                        shortfall_context = f"""
+Standard Intro: "Thank you for your interest in our students. We have shortlisted the following candidates who match your requirements in the {domain} domain:"
+"""
+
                     prompt = f"""{AIService.SYSTEM_PROMPT}
 
-Write a brief professional email introduction (2-3 sentences) responding to this HR request.
+Write a brief professional email introduction (1 short paragraph) responding to this HR request.
 
 HR Message:
 \"\"\"
-{hr_message}
+{clean_message}
 \"\"\"
 
 Company: {company}
+Contact Name: {contact_name or 'Hiring Team'}
 
-The intro should:
-- Thank them for their request
-- Mention you're providing student profiles
-- Be warm and professional
+{shortfall_context}
 
-Write ONLY the intro paragraph, starting with "Dear {company} Team," or "Dear HR Team,"
-Do NOT include a signature."""
+Write ONLY the intro paragraph.
+Greeting Logic:
+- If Contact Name is provided, start with "Dear {contact_name},"
+- Otherwise, start with "Dear {company} Team,"
+
+End with the sentence introducing the list (e.g., "The details are shared below:").
+Do NOT include a signature.
+"""
 
                     response = ollama.chat(
                         model=OLLAMA_MODEL,
@@ -396,16 +508,27 @@ Do NOT include a signature."""
                     
                     student_section = "\n\n".join(student_list)
                     
-                    draft_body = f"""{intro}
+                    # 2. Select Closing Text based on count match
+                    if req_count and actual_count < req_count:
+                        closing_text = f"""Currently, we are able to provide details for {actual_count} students, and we will share additional profiles if more suitable candidates are identified. We will be happy to forward their detailed resumes and arrange interviews at your convenience.
 
-{student_section}
+Kindly let us know your preferred next steps.
 
-These students have demonstrated strong academic performance and relevant skills. We can arrange interviews at your convenience and provide detailed resumes upon request.
+Warm regards,
+Placement Team"""
+                    else:
+                        closing_text = """These students have demonstrated strong academic performance and relevant skills. We can arrange interviews at your convenience and provide detailed resumes upon request.
 
 Please let us know your preferred next steps.
 
 Best regards,
 Placement Team"""
+                    
+                    draft_body = f"""{intro}
+
+{student_section}
+
+{closing_text}"""
                     
                 else:
                     # Generate full response for non-student requests
@@ -415,10 +538,11 @@ Write a brief professional email response to this HR message.
 
 HR Message:
 \"\"\"
-{hr_message}
+{clean_message}
 \"\"\"
 
 Company: {company}
+Contact Name: {contact_name or 'Hiring Team'}
 
 Guidelines:
 - If they say "will connect" or "thanks", write a SHORT acknowledgment (2-3 sentences)
@@ -426,7 +550,10 @@ Guidelines:
 - Be natural and professional
 - Keep it concise
 
-Write the complete email starting with "Dear {company} Team," or "Dear HR Team,"
+Greeting Logic:
+- If Contact Name is provided, start with "Dear {contact_name},"
+- Otherwise, start with "Dear {company} Team,"
+
 End with:
 Best regards,
 Placement Team"""
@@ -448,14 +575,14 @@ Placement Team"""
                 print(f"[ERROR] Draft generation failed: {str(e)}")
                 import traceback
                 traceback.print_exc()
-                draft_body = AIService._fallback_draft(hr_message, company, requesting_students, students_data)
+                draft_body = AIService._fallback_draft(clean_message, company, should_include_students, students_data, contact_name)
         else:
-            draft_body = AIService._fallback_draft(hr_message, company, requesting_students, students_data)
+            draft_body = AIService._fallback_draft(clean_message, company, should_include_students, students_data, contact_name)
         
-        # Add confirmation header
-        draft_with_header = f"""[DRAFT EMAIL — REQUIRES CONFIRMATION]
-
-{draft_body}"""
+        # Add confirmation header - REMOVED AS REQUESTED
+        # draft_with_header = f"""[DRAFT EMAIL — REQUIRES CONFIRMATION]\n\n{draft_body}"""
+        
+        draft_with_header = draft_body
         
         # Generate follow-up actions
         follow_up_actions = []
@@ -469,17 +596,20 @@ Placement Team"""
         
         return {
             "subject": f"Re: Student Profiles - {company}",
-            "body": draft_with_header,
+            "content": draft_with_header,
             "requires_confirmation": True,
             "extracted_intent": intent,
             "suggested_students": students_data[:10] if students_data else [],
-            "follow_up_actions": follow_up_actions
+            "follow_up_actions": follow_up_actions,
+            "student_requirements": student_requirements  # Add requirements for controller
         }
     
     @staticmethod
-    def _fallback_draft(hr_message: str, company: str, requesting_students: bool, students_data: Optional[List[Dict]]) -> str:
+    def _fallback_draft(hr_message: str, company: str, requesting_students: bool, students_data: Optional[List[Dict]], contact_name: Optional[str] = None) -> str:
         """Fallback draft generation"""
         print("[INFO] Using fallback draft generation")
+        
+        greeting = f"Dear {contact_name}," if contact_name else f"Dear {company} Team,"
         
         hr_lower = hr_message.lower()
         
@@ -496,48 +626,50 @@ Placement Team"""
             
             student_section = "\n\n".join(student_list)
             
-            return f"""Dear {company} Team,
-
-Thank you for your interest in our students. Based on your requirements, here are suitable candidates:
-
-{student_section}
-
-These students have demonstrated strong academic performance and relevant skills. We can arrange interviews at your convenience and provide detailed resumes upon request.
-
-Please let us know your preferred next steps.
-
-Best regards,
-Placement Team"""
+            student_section = "\n\n".join(student_list)
+            
+            return f"""{greeting}
+ 
+ Thank you for your interest in our students. Based on your requirements, here are suitable candidates:
+ 
+ {student_section}
+ 
+ These students have demonstrated strong academic performance and relevant skills. We can arrange interviews at your convenience and provide detailed resumes upon request.
+ 
+ Please let us know your preferred next steps.
+ 
+ Best regards,
+ Placement Team"""
         
         elif 'connect' in hr_lower or 'touch' in hr_lower:
-            return f"""Dear {company} Team,
-
-Thank you for your response. We look forward to connecting with you soon.
-
-Please feel free to reach out whenever you're ready to discuss placement opportunities or if you need any information from our end.
-
-Best regards,
-Placement Team"""
+            return f"""{greeting}
+ 
+ Thank you for your response. We look forward to connecting with you soon.
+ 
+ Please feel free to reach out whenever you're ready to discuss placement opportunities or if you need any information from our end.
+ 
+ Best regards,
+ Placement Team"""
         
         elif 'thank' in hr_lower:
-            return f"""Dear {company} Team,
-
-You're welcome! We're always happy to assist with your recruitment needs.
-
-Please don't hesitate to reach out if you need any further information or support.
-
-Best regards,
-Placement Team"""
+            return f"""{greeting}
+ 
+ You're welcome! We're always happy to assist with your recruitment needs.
+ 
+ Please don't hesitate to reach out if you need any further information or support.
+ 
+ Best regards,
+ Placement Team"""
         
         else:
-            return f"""Dear {company} Team,
-
-Thank you for your response. We appreciate your interest in our students.
-
-Please let us know if you need any specific information or if we can assist you in any way.
-
-Best regards,
-Placement Team"""
+            return f"""{greeting}
+ 
+ Thank you for your response. We appreciate your interest in our students.
+ 
+ Please let us know if you need any specific information or if we can assist you in any way.
+ 
+ Best regards,
+ Placement Team"""
     
     @staticmethod
     def generate_draft_with_students(hr_reply: str, students_data: List[Dict], company: str) -> str:
@@ -545,8 +677,9 @@ Placement Team"""
         Legacy method for backward compatibility
         Calls the new generate_draft_reply method
         """
-        result = AIService.generate_draft_reply(hr_reply, company, students_data)
-        return result['body']
+        # Pass None for contact_name as this is a legacy/batch method
+        result = AIService.generate_draft_reply(hr_reply, company, None, students_data)
+        return result['content']
     
     @staticmethod
     def analyze_sentiment(email_body: str) -> str:

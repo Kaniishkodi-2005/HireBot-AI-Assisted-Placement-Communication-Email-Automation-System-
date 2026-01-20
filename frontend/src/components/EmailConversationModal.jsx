@@ -1,12 +1,10 @@
 import { useState, useEffect, useRef } from "react";
-import { parseHrReply, createReminder, sendEmail } from "../services/hrService";
-import AutoDraftModal from "./AutoDraftModal";
+import { parseHrReply, sendEmail } from "../services/hrService";
 
 function EmailConversationModal({ contact, onClose, onRefresh }) {
   const [conversations, setConversations] = useState([]);
   const conversationEndRef = useRef(null);
   const didInitialScroll = useRef(false);
-  const [showAutoDraft, setShowAutoDraft] = useState(false);
   const [latestHrReply, setLatestHrReply] = useState(null);
 
   useEffect(() => {
@@ -206,14 +204,6 @@ function EmailConversationModal({ contact, onClose, onRefresh }) {
         </div>
       </div>
 
-      {showAutoDraft && latestHrReply && (
-        <AutoDraftModal
-          hrReply={latestHrReply}
-          contact={contact}
-          onClose={() => setShowAutoDraft(false)}
-          onSendDraft={handleSendDraft}
-        />
-      )}
     </div>
   );
 }

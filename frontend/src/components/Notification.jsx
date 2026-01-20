@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 
-function Notification({ message, type = "success", onClose, duration = 5000 }) {
+function Notification({ message, type = "success", onClose, duration = 8000 }) {
   useEffect(() => {
     if (duration > 0) {
       const timer = setTimeout(() => {

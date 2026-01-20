@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 
-export default function IntentDisplayModal({ intent, contact, onClose, onCreateReminder }) {
-  const [isAdded, setIsAdded] = useState(false);
+export default function IntentDisplayModal({ intent, contact, onClose }) {
 
   // Close on Escape key
   useEffect(() => {
@@ -140,27 +139,6 @@ export default function IntentDisplayModal({ intent, contact, onClose, onCreateR
             </div>
           </div>
           <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
-            {intent.visit_date && !isAdded && (
-              <button
-                type="button"
-                className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-purple-600 text-base font-medium text-white hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 sm:ml-3 sm:w-auto sm:text-sm"
-                onClick={async () => {
-                  await onCreateReminder(contact.id, {
-                    due_date: intent.visit_date,
-                    description: `Campus Visit: ${intent.role || 'Placement Drive'}`,
-                    priority: 'high'
-                  });
-                  setIsAdded(true);
-                }}
-              >
-                Add Reminder
-              </button>
-            )}
-            {isAdded && (
-              <span className="inline-flex items-center px-3 py-2 text-sm font-medium text-green-700">
-                ✓ Added
-              </span>
-            )}
             <button
               type="button"
               className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"

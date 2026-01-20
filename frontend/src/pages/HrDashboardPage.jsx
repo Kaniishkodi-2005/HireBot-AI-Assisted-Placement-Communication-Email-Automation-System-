@@ -33,6 +33,7 @@ function HrDashboardPage() {
   const [intentData, setIntentData] = useState(null);
   const [showIntentModal, setShowIntentModal] = useState(false);
   const [intentLoading, setIntentLoading] = useState(false);
+  const [draftingContactId, setDraftingContactId] = useState(null);
   const itemsPerPage = 6;
 
   const handleViewConversation = async (contact) => {
@@ -87,34 +88,81 @@ function HrDashboardPage() {
   const handleAiDraft = async (contact) => {
     console.log('=== AI DRAFT BUTTON CLICKED ===');
     console.log('Contact:', contact);
-    setLoading(true);
+    setDraftingContactId(contact.id);
     try {
-      setNotification({ message: "Syncing latest emails...", type: "info" });
+      // 1. Get the latest conversation data from DB first
+      let conversationData = await fetchConversation(contact.id);
+      let allMessages = conversationData.conversations || [];
 
-      // 1. Try to sync first
-      try {
-        await syncConversation(contact.id);
-      } catch (syncErr) {
-        console.warn("Sync failed, proceeding with cached data:", syncErr);
-        setNotification({
-          message: "Could not sync fresh emails, using last known conversation...",
-          type: "warning"
-        });
-        // Wait a bit so user can see the warning
-        await new Promise(r => setTimeout(r, 1500));
+      // Sort messages by timestamp just to be safe
+      allMessages.sort((a, b) => new Date(a.sent_at) - new Date(b.sent_at));
+
+      // Check if the very last message was sent by us
+      if (allMessages.length > 0) {
+        const lastMessage = allMessages[allMessages.length - 1];
+        if (lastMessage.direction === 'sent') {
+          // Alert the user and stop
+          const confirmGen = window.confirm(
+            "The latest message in this conversation was sent by YOU.\n\n" +
+            "It seems you have already replied. Are you sure you want to generate another draft based on the previous HR email?"
+          );
+
+          if (!confirmGen) {
+            setDraftingContactId(null);
+            return;
+          }
+        }
       }
 
-      // 2. Get the latest conversation data
-      const conversationData = await fetchConversation(contact.id);
-      const hrReplies = conversationData.conversations?.filter(c => c.direction === 'received') || [];
+      let hrReplies = allMessages.filter(c => c.direction === 'received');
+
+      // 2. Only sync if no replies exist in DB
+      if (hrReplies.length === 0) {
+        setNotification({ message: "Syncing latest emails...", type: "info" });
+        try {
+          await syncConversation(contact.id);
+          // Re-fetch after sync
+          conversationData = await fetchConversation(contact.id);
+          allMessages = conversationData.conversations || [];
+          hrReplies = allMessages.filter(c => c.direction === 'received');
+        } catch (syncErr) {
+          console.warn("Sync failed, proceeding with cached data:", syncErr);
+        }
+      }
+
+      // Check again after sync
+      if (allMessages.length > 0) {
+        const lastMessage = allMessages[allMessages.length - 1];
+        // If we just synced and found a sent message at the end, warn again? 
+        // Maybe overkill, but safe. Let's just trust the first check + sync logic.
+        // Actually, if sync found a new SENT message, we should probably warn.
+        // But usually sync fetches INBOX mostly?
+        // Let's stick to the initial check for now to avoid complexity.
+      }
+
       const latestReply = hrReplies.length > 0 ? hrReplies[hrReplies.length - 1] : null;
+
+      console.log('=== HR REPLIES DEBUG ===');
+      console.log('Total HR replies found:', hrReplies.length);
+      hrReplies.forEach((reply, idx) => {
+        console.log(`Reply ${idx + 1}:`, {
+          timestamp: reply.timestamp || reply.sent_at,
+          subject: reply.subject,
+          content: reply.content?.substring(0, 100) + '...'
+        });
+      });
+      console.log('Selected latest reply:', {
+        subject: latestReply?.subject,
+        content: latestReply?.content?.substring(0, 100) + '...'
+      });
+      console.log('========================');
 
       if (!latestReply) {
         setNotification({
-          message: "No HR reply found in database. Please ensure you have received an email from this contact.",
+          message: "No HR reply found. Please ensure you have received an email from this contact.",
           type: "warning"
         });
-        setLoading(false);
+        setDraftingContactId(null);
         return;
       }
 
@@ -135,8 +183,10 @@ function HrDashboardPage() {
       console.error('=== AI DRAFT ERROR ===');
       const errorMsg = error.response?.data?.detail || error.message || "Failed to generate AI draft";
       setNotification({ message: "Error: " + errorMsg, type: "error" });
+      // CRITICAL: Alert the user so they can see the error even if UI refreshes
+      window.alert("AI Draft Error: " + errorMsg);
     } finally {
-      setLoading(false);
+      setDraftingContactId(null);
     }
   };
 
@@ -167,17 +217,6 @@ function HrDashboardPage() {
     }
   };
 
-
-  const handleCreateReminder = async (contactId, reminderData) => {
-    try {
-      await createReminder(contactId, reminderData);
-      setNotification({ message: "Reminder added successfully!", type: "success" });
-      setReminderCount(prev => prev + 1);
-    } catch (error) {
-      console.error("Failed to create reminder:", error);
-      setNotification({ message: "Failed to add reminder", type: "error" });
-    }
-  };
 
   const handleTemplateSelect = async (template) => {
     console.log('Template selected:', template);
@@ -501,7 +540,6 @@ function HrDashboardPage() {
             setShowIntentModal(false);
             setIntentData(null);
           }}
-          onCreateReminder={handleCreateReminder}
         />
       )}
 
@@ -695,9 +733,15 @@ function HrDashboardPage() {
                     </button>
                     <button
                       onClick={() => handleAiDraft(c)}
+                      disabled={draftingContactId === c.id}
                       className="flex-1 px-3 py-2 bg-purple-50 text-purple-600 hover:bg-purple-100 rounded-lg text-xs font-bold transition-all shadow-sm border border-purple-100 flex items-center justify-center gap-1"
                     >
-                      <span style={{ color: '#9333ea' }}>✨</span> AI Draft
+                      {draftingContactId === c.id ? (
+                        <span className="w-4 h-4 border-2 border-purple-600 border-t-transparent rounded-full animate-spin"></span>
+                      ) : (
+                        <span style={{ color: '#9333ea' }}>✨</span>
+                      )}
+                      {draftingContactId === c.id ? "Drafting..." : "AI Draft"}
                     </button>
                   </div>
                 </div>

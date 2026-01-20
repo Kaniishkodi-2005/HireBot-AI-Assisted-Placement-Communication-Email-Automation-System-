@@ -38,7 +38,7 @@ class FollowUpAction(BaseModel):
 class DraftEmailResponse(BaseModel):
     """AI-generated draft email response"""
     subject: str = Field(..., description="Email subject line")
-    body: str = Field(..., description="Email body content")
+    content: str = Field(..., description="Email body content")
     requires_confirmation: bool = Field(True, description="Always true - requires human approval")
     extracted_intent: Optional[ExtractedIntent] = Field(None, description="Extracted intent from original message")
     suggested_students: List[dict] = Field(default_factory=list, description="Recommended students")

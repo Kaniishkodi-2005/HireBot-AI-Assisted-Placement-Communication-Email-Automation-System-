@@ -440,11 +440,60 @@ def generate_draft_reply(request: DraftReplyRequest, db: Session = Depends(get_d
         if not contact:
             raise HTTPException(status_code=404, detail="Contact not found")
         
-        # Get students if requested
+        # First, do a preliminary draft generation to extract requirements
+        from app.utils.student_requirements import extract_student_requirements
+        student_reqs = extract_student_requirements(request.hr_message)
+        
+        print(f"\n[CONTROLLER] Extracted student requirements: {student_reqs}")
+        
+        # Get students if requested - with intelligent filtering
         students_data = None
         if request.include_students:
             from app.models.student_model import Student
-            students = db.query(Student).order_by(Student.cgpa.desc()).limit(20).all()
+            from sqlalchemy import func, case
+            
+            query = db.query(Student)
+            
+            # Filter by domain if specified
+            if student_reqs.get('domain'):
+                domain = student_reqs['domain']
+                print(f"[CONTROLLER] Filtering by domain: {domain}")
+                query = query.filter(Student.domain.ilike(f"%{domain}%"))
+            
+            # Filter by skills if specified
+            if student_reqs.get('skills'):
+                skills = student_reqs['skills']
+                print(f"[CONTROLLER] Filtering by skills: {skills}")
+                
+                # Create skill-based scoring
+                # For each skill, check if it appears in skills_text and boost PS level
+                skill_conditions = []
+                for skill in skills:
+                    skill_conditions.append(
+                        case(
+                            (func.lower(Student.skills_text).like(f"%{skill.lower()}%"), Student.ps_level),
+                            else_=0
+                        )
+                    )
+                
+                if skill_conditions:
+                    # Sum all skill matches and order by that score
+                    skill_score = sum(skill_conditions)
+                    query = query.order_by(skill_score.desc(), Student.ps_level.desc(), Student.cgpa.desc())
+                else:
+                    query = query.order_by(Student.ps_level.desc(), Student.cgpa.desc())
+            else:
+                # No specific skills - order by PS level and CGPA
+                query = query.order_by(Student.ps_level.desc(), Student.cgpa.desc())
+            
+            # Limit by count if specified, otherwise default to 20
+            limit = student_reqs.get('count') or 20
+            print(f"[CONTROLLER] Limiting to {limit} students")
+            
+            students = query.limit(limit).all()
+            
+            print(f"[CONTROLLER] Found {len(students)} matching students")
+            
             students_data = [
                 {
                     "id": s.id,
@@ -463,6 +512,7 @@ def generate_draft_reply(request: DraftReplyRequest, db: Session = Depends(get_d
         draft_result = AIService.generate_draft_reply(
             request.hr_message,
             contact.company,
+            contact.name,  # Pass contact name for personalization
             students_data
         )
         
