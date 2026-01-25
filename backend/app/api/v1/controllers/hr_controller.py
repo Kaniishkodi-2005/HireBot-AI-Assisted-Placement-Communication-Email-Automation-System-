@@ -1,6 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 from typing import List, Optional
+from datetime import datetime
 
 from app.db.session import get_db
 from app.models.email_models import EmailTemplate
@@ -226,26 +229,48 @@ def export_hr_contacts_csv(db: Session = Depends(get_db)):
 
 
 
-@router.get("/debug-conversations/{contact_id}")
-def debug_conversations(contact_id: int, db: Session = Depends(get_db)):
-    """Debug endpoint to see raw conversation data"""
-    from app.models.email_models import EmailConversation
-    conversations = db.query(EmailConversation).filter(
-        EmailConversation.hr_contact_id == contact_id
+@router.get("/find-contact/{name}")
+def find_contact_by_name(name: str, db: Session = Depends(get_db)):
+    """Find contact ID by name"""
+    contacts = db.query(HRContact).filter(
+        HRContact.name.ilike(f"%{name}%")
     ).all()
     
     result = []
-    for conv in conversations:
+    for contact in contacts:
         result.append({
-            "id": conv.id,
-            "direction": conv.direction,
-            "subject": conv.subject,
-            "content_length": len(conv.content) if conv.content else 0,
-            "content_preview": conv.content[:100] if conv.content else "No content",
-            "sent_at": conv.sent_at.isoformat() if conv.sent_at else None
+            "id": contact.id,
+            "name": contact.name,
+            "company": contact.company,
+            "email": contact.email
         })
     
-    return {"contact_id": contact_id, "conversations": result}
+    return {"contacts": result}
+
+@router.get("/debug-conversation-display/{contact_id}")
+def debug_conversation_display(contact_id: int, db: Session = Depends(get_db)):
+    """Debug what conversation API returns vs what's in DB"""
+    # Get what the conversation API returns
+    conversation_result = HRService.get_conversation_history(db, contact_id)
+    
+    # Get raw count from DB
+    from app.models.email_models import EmailConversation
+    total_in_db = db.query(EmailConversation).filter(
+        EmailConversation.hr_contact_id == contact_id
+    ).count()
+    
+    sent_in_db = db.query(EmailConversation).filter(
+        EmailConversation.hr_contact_id == contact_id,
+        EmailConversation.direction == "sent"
+    ).count()
+    
+    return {
+        "contact_id": contact_id,
+        "total_in_db": total_in_db,
+        "sent_in_db": sent_in_db,
+        "conversation_api_count": len(conversation_result.get("conversations", [])),
+        "conversation_api_result": conversation_result
+    }
 
 
 @router.post("/fetch-emails/{contact_id}")
@@ -375,7 +400,7 @@ def create_manual_reminder(request: dict, db: Session = Depends(get_db)):
         # Create new reminder
         new_reminder = ReminderService.create_reminder(db, ReminderCreate(
             contact_id=contact_id,
-            description=f"Campus Visit: {contact.company}",
+            description=f"Campus Visit - {contact.company}",
             due_date=visit_date,
             priority="high"
         ))
@@ -475,6 +500,12 @@ def generate_draft_reply(request: DraftReplyRequest, db: Session = Depends(get_d
     - suggested_students: Recommended students (if applicable)
     - follow_up_actions: Recommended follow-ups
     """
+    print(f"\n[CONTROLLER DEBUG] draft-reply endpoint called - UPDATED")
+    print(f"[CONTROLLER DEBUG] Contact ID: {request.contact_id}")
+    print(f"[CONTROLLER DEBUG] Include students: {request.include_students}")
+    print(f"[CONTROLLER DEBUG] HR message length: {len(request.hr_message)}")
+    print(f"[CONTROLLER DEBUG] HR message preview: '{request.hr_message[:200]}...'")
+    
     try:
         # Get contact
         contact = db.query(HRContact).filter(HRContact.id == request.contact_id).first()
@@ -499,23 +530,90 @@ def generate_draft_reply(request: DraftReplyRequest, db: Session = Depends(get_d
             if student_reqs.get('domain'):
                 domain = student_reqs['domain']
                 print(f"[CONTROLLER] Filtering by domain: {domain}")
-                query = query.filter(Student.domain.ilike(f"%{domain}%"))
+                # More flexible domain matching
+                if domain.lower() in ['ai', 'artificial intelligence']:
+                    # First try exact AI domain match
+                    ai_query = query.filter(
+                        or_(
+                            Student.domain.ilike("%AI%"),
+                            Student.domain.ilike("%Artificial Intelligence%"),
+                            Student.domain.ilike("%Machine Learning%"),
+                            Student.domain.ilike("%Data Science%")
+                        )
+                    )
+                    ai_count = ai_query.count()
+                    print(f"[CONTROLLER] Found {ai_count} students with AI domain")
+                    
+                    if ai_count > 0:
+                        query = ai_query
+                    else:
+                        # Fallback: Look for students with AI skills in any domain
+                        print(f"[CONTROLLER] No AI domain students found, searching by AI skills")
+                        query = query.filter(
+                            or_(
+                                func.lower(Student.skills_text).like("%ai%"),
+                                func.lower(Student.skills_text).like("%artificial intelligence%"),
+                                func.lower(Student.skills_text).like("%machine learning%"),
+                                func.lower(Student.skills_text).like("%ml%"),
+                                func.lower(Student.skills_text).like("%python%"),  # AI-related skill
+                                func.lower(Student.skills_text).like("%data%")
+                            )
+                        )
+                        skills_count = query.count()
+                        print(f"[CONTROLLER] Found {skills_count} students with AI-related skills")
+                        
+                        if skills_count == 0:
+                            # Last fallback: Get top students from CSE/IT departments
+                            print(f"[CONTROLLER] No AI skills found, using CSE/IT students as fallback")
+                            query = db.query(Student).filter(
+                                or_(
+                                    Student.department.ilike("%CSE%"),
+                                    Student.department.ilike("%IT%"),
+                                    Student.department.ilike("%Computer%")
+                                )
+                            )
+                elif domain.lower() in ['embedded', 'embedded systems']:
+                    query = query.filter(
+                        or_(
+                            Student.domain.ilike("%Embedded%"),
+                            Student.domain.ilike("%IoT%"),
+                            Student.domain.ilike("%Hardware%")
+                        )
+                    )
+                else:
+                    query = query.filter(Student.domain.ilike(f"%{domain}%"))
             
             # Filter by skills if specified
             if student_reqs.get('skills'):
                 skills = student_reqs['skills']
                 print(f"[CONTROLLER] Filtering by skills: {skills}")
                 
-                # Create skill-based scoring
-                # For each skill, check if it appears in skills_text and boost PS level
+                # Create skill-based scoring with better AI skill matching
                 skill_conditions = []
                 for skill in skills:
-                    skill_conditions.append(
-                        case(
-                            (func.lower(Student.skills_text).like(f"%{skill.lower()}%"), Student.ps_level),
-                            else_=0
+                    skill_lower = skill.lower()
+                    if skill_lower in ['ai', 'artificial intelligence', 'machine learning']:
+                        # Match AI-related skills more broadly
+                        skill_conditions.append(
+                            case(
+                                (or_(
+                                    func.lower(Student.skills_text).like("%ai%"),
+                                    func.lower(Student.skills_text).like("%artificial intelligence%"),
+                                    func.lower(Student.skills_text).like("%machine learning%"),
+                                    func.lower(Student.skills_text).like("%ml%"),
+                                    func.lower(Student.skills_text).like("%deep learning%"),
+                                    func.lower(Student.skills_text).like("%neural network%")
+                                ), Student.ps_level * 2),  # Boost AI students
+                                else_=0
+                            )
                         )
-                    )
+                    else:
+                        skill_conditions.append(
+                            case(
+                                (func.lower(Student.skills_text).like(f"%{skill_lower}%"), Student.ps_level),
+                                else_=0
+                            )
+                        )
                 
                 if skill_conditions:
                     # Sum all skill matches and order by that score
@@ -534,6 +632,8 @@ def generate_draft_reply(request: DraftReplyRequest, db: Session = Depends(get_d
             students = query.limit(limit).all()
             
             print(f"[CONTROLLER] Found {len(students)} matching students")
+            for s in students[:5]:  # Show first 5 for debugging
+                print(f"[CONTROLLER] Student: {s.name} - {s.department} - Domain: {s.domain} - Skills: {s.skills_text}")
             
             students_data = [
                 {

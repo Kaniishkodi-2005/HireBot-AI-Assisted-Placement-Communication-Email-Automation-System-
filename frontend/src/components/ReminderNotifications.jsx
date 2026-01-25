@@ -9,6 +9,7 @@ function ReminderNotifications({ onClose, onCountChange }) {
   const [showDraftModal, setShowDraftModal] = useState(false);
   const [selectedReminder, setSelectedReminder] = useState(null);
   const [draftEmail, setDraftEmail] = useState(null);
+  const [recentlyFulfilled, setRecentlyFulfilled] = useState(null);
 
   useEffect(() => {
     checkReminders();
@@ -51,14 +52,25 @@ function ReminderNotifications({ onClose, onCountChange }) {
   };
 
   const handleMarkFulfilled = async (reminderId) => {
+    const confirmed = window.confirm('Are you sure you want to mark this reminder as fulfilled?');
+    if (!confirmed) return;
+
     try {
       await markReminderFulfilled(reminderId);
+      
+      // Find the fulfilled reminder for undo functionality
+      const fulfilledReminder = [...pendingReminders, ...visitReminders].find(r => r.id === reminderId);
+      
       // Remove from both regular reminders and visit reminders
       const updatedReminders = pendingReminders.filter(r => r.id !== reminderId);
       const updatedVisits = visitReminders.filter(r => r.id !== reminderId);
       setPendingReminders(updatedReminders);
       setVisitReminders(updatedVisits);
       updateTotalCount(updatedReminders.length, updatedVisits.length);
+      
+      // Set up undo option
+      setRecentlyFulfilled(fulfilledReminder);
+      setTimeout(() => setRecentlyFulfilled(null), 10000); // Clear after 10 seconds
     } catch (error) {
       console.error('Failed to mark reminder as fulfilled:', error);
     }
@@ -87,13 +99,55 @@ function ReminderNotifications({ onClose, onCountChange }) {
 
   const handleApproveDraft = async (approvedDraft) => {
     try {
-      await sendEmail(selectedReminder.contact_id, approvedDraft);
-      await markReminderFulfilled(selectedReminder.id);
-      const updatedReminders = pendingReminders.filter(r => r.id !== selectedReminder.id);
-      setPendingReminders(updatedReminders);
-      updateTotalCount(updatedReminders.length, visitReminders.length);
+      const result = await sendEmail(selectedReminder.contact_id, approvedDraft);
+      
+      // Check if the result indicates an error
+      if (result.error || result.status === "failed") {
+        alert(`Failed to send email: ${result.error || result.message || "Unknown error"}`);
+        return;
+      }
+      
+      // Success - email sent, but don't mark as fulfilled automatically
+      // The reminder should remain active until manually marked as fulfilled
+      
+      // Close modal and show success
+      setShowDraftModal(false);
+      setSelectedReminder(null);
+      setDraftEmail(null);
+      
+      alert(`✅ Reminder email sent successfully to ${selectedReminder.contact_name}!`);
+      
+      // Refresh the reminders list to ensure it's up to date
+      checkReminders();
+      
     } catch (error) {
       console.error('Failed to send reminder email:', error);
+      const errorMessage = error.response?.data?.error ||
+        error.response?.data?.message ||
+        error.response?.data?.detail ||
+        error.message ||
+        "Failed to send email";
+      alert(`❌ Error: ${errorMessage}`);
+    }
+  };
+
+  const handleUndoFulfilled = async () => {
+    if (!recentlyFulfilled) return;
+    
+    try {
+      console.log('Attempting to restore reminder:', recentlyFulfilled.id);
+      // Call API to restore reminder
+      await http.put(`/hr/reminders/${recentlyFulfilled.id}/restore`);
+      console.log('Reminder restored successfully');
+      
+      // Refresh the entire reminders list to get proper sorting
+      await checkReminders();
+      
+      setRecentlyFulfilled(null);
+      console.log('Undo completed successfully');
+    } catch (error) {
+      console.error('Failed to undo reminder fulfillment:', error);
+      alert('Failed to undo. Please try again.');
     }
   };
 
@@ -120,6 +174,23 @@ function ReminderNotifications({ onClose, onCountChange }) {
         </div>
 
         <div className="p-6 overflow-y-auto flex-1">
+          {/* Undo notification */}
+          {recentlyFulfilled && (
+            <div className="mb-4 bg-green-50 border border-green-200 rounded-lg p-3 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-green-600">✓</span>
+                <span className="text-sm text-green-800">
+                  Marked "{recentlyFulfilled.description}" as fulfilled
+                </span>
+              </div>
+              <button
+                onClick={handleUndoFulfilled}
+                className="text-sm text-green-700 hover:text-green-900 font-medium underline"
+              >
+                Undo
+              </button>
+            </div>
+          )}
           {pendingReminders.length === 0 && visitReminders.length === 0 ? (
             <div className="text-center py-12 text-gray-500">
               <svg className="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -132,22 +203,29 @@ function ReminderNotifications({ onClose, onCountChange }) {
             <div className="space-y-4">
               {/* Visit Reminders */}
               {visitReminders.map((notification) => (
-                <div key={`visit-${notification.id}`} className="bg-purple-50 rounded-lg p-4 border border-purple-200">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full bg-purple-500 animate-pulse"></div>
-                      <h4 className="text-sm font-semibold text-purple-800">
-                        {notification.is_today ? '🔔 Today\'s Visit' :
-                          notification.is_tomorrow ? '⏰ Tomorrow\'s Visit' :
-                            `📅 Upcoming: ${notification.deadline_text}`}
-                      </h4>
-                    </div>
-                    <button
-                      onClick={() => dismissVisitReminder(notification.id)}
-                      className="text-purple-600 hover:text-purple-800 text-xl font-bold"
-                    >
-                      ×
-                    </button>
+                <div key={`visit-${notification.id}`} className={`rounded-lg p-4 border ${
+                  notification.is_today || notification.is_tomorrow
+                    ? 'bg-red-50 border-red-200'
+                    : 'bg-purple-50 border-purple-200'
+                }`}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className={`w-2 h-2 rounded-full animate-pulse ${
+                      notification.is_today || notification.is_tomorrow
+                        ? 'bg-red-500'
+                        : 'bg-purple-500'
+                    }`}></div>
+                    <h4 className={`text-sm font-semibold ${
+                      notification.is_today || notification.is_tomorrow
+                        ? 'text-red-800'
+                        : 'text-purple-800'
+                    }`}>
+                      {notification.is_today ? '🔔 Today\'s Visit' :
+                        notification.is_tomorrow ? '⏰ Tomorrow\'s Visit' :
+                          `📅 Upcoming: ${notification.deadline_text}`}
+                    </h4>
+                    {(notification.is_today || notification.is_tomorrow) && (
+                      <span className="text-lg ml-auto">🚨</span>
+                    )}
                   </div>
 
                   <div className="text-base text-gray-800 mb-2">

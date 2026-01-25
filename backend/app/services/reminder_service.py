@@ -13,9 +13,9 @@ class ReminderService:
             return None
             
         try:
-            # Handle "Upcoming" string
+            # Handle "Upcoming" string (legacy support)
             if date_str.lower() == "upcoming":
-                return datetime.now() + timedelta(days=7)
+                return datetime.now() + timedelta(days=1)  # Default to tomorrow
 
             # Try parsing exact formats first
             formats = [
@@ -84,14 +84,22 @@ class ReminderService:
             
             # 1. Exact description match (ignoring auto-detected suffix)
             if rem_desc == search_desc:
-                # If it's an exact match, it's definitely a duplicate regardless of date
+                print(f"[DUPLICATE] Exact match found for '{search_desc}' - returning existing reminder {rem.id}")
                 return rem
                 
             # 2. Aggressive Consolidation: If this is a Visit and they already have a Visit
             # we block it to prevent clutter. 1 Visit per contact is usually enough.
             if is_visit and "visit" in rem_desc:
-                print(f"[CONSOLIDATE] Blocking new visit reminder for contact {data.contact_id} because one already exists.")
+                print(f"[CONSOLIDATE] Blocking new visit reminder for contact {data.contact_id} because one already exists (ID: {rem.id}).")
                 return rem
+            
+            # 3. Same contact + same date consolidation
+            if rem.due_date and parsed_date:
+                # If dates are within 1 day of each other, consider it duplicate
+                date_diff = abs((rem.due_date - parsed_date).days)
+                if date_diff <= 1 and (is_visit or "visit" in rem_desc):
+                    print(f"[DATE_CONSOLIDATE] Visit reminders within 1 day - returning existing reminder {rem.id}")
+                    return rem
             
         reminder = Reminder(
             contact_id=data.contact_id,
@@ -117,6 +125,14 @@ class ReminderService:
             Reminder.status == "pending"
         ).order_by(Reminder.due_date.asc()).all()
         
+        # Auto-cleanup duplicates
+        ReminderService._cleanup_duplicates(db, reminders)
+        
+        # Re-fetch after cleanup
+        reminders = db.query(Reminder).filter(
+            Reminder.status == "pending"
+        ).order_by(Reminder.due_date.asc()).all()
+        
         # Auto-mark overdue reminders as fulfilled if they're more than 7 days past due
         auto_fulfilled_count = 0
         for reminder in reminders[:]:
@@ -133,11 +149,46 @@ class ReminderService:
         return reminders
     
     @staticmethod
+    def _cleanup_duplicates(db: Session, reminders):
+        """Remove duplicate reminders based on contact_id, description, and date"""
+        seen = set()
+        duplicates_to_remove = []
+        
+        for reminder in reminders:
+            # Create a key for deduplication
+            desc_normalized = reminder.description.replace(" (Auto-detected)", "").strip().lower()
+            date_key = reminder.due_date.date() if reminder.due_date else "no_date"
+            key = (reminder.contact_id, desc_normalized, date_key)
+            
+            if key in seen:
+                duplicates_to_remove.append(reminder.id)
+                print(f"[CLEANUP] Marking duplicate reminder {reminder.id} for removal: {desc_normalized}")
+            else:
+                seen.add(key)
+        
+        # Remove duplicates
+        if duplicates_to_remove:
+            db.query(Reminder).filter(Reminder.id.in_(duplicates_to_remove)).delete(synchronize_session=False)
+            db.commit()
+            print(f"[CLEANUP] Removed {len(duplicates_to_remove)} duplicate reminders")
+    
+    @staticmethod
     def mark_fulfilled(db: Session, reminder_id: int):
         reminder = db.query(Reminder).filter(Reminder.id == reminder_id).first()
         if reminder:
             reminder.status = "fulfilled"
             db.commit()
+        return reminder
+
+    @staticmethod
+    def restore_reminder(db: Session, reminder_id: int):
+        """Restore a fulfilled reminder back to pending status"""
+        reminder = db.query(Reminder).filter(Reminder.id == reminder_id).first()
+        if reminder:
+            reminder.status = "pending"
+            # Don't update updated_at to preserve original position in list
+            db.commit()
+            print(f"[RESTORE] Reminder {reminder_id} restored to pending status")
         return reminder
 
     @staticmethod
@@ -209,15 +260,12 @@ class ReminderService:
                 )
             else:
                 body = (
-                    f"Dear {contact_name},\n\n"
-                    f"We hope this email finds you well.\n\n"
-                    f"This is a friendly reminder about the upcoming campus visit from {company} scheduled for {due_date}. "
-                    f"We are excited about this opportunity to strengthen our partnership and introduce you to our exceptional students.\n\n"
-                    f"Our placement team has been preparing to ensure a smooth and productive visit. "
-                    f"We are confident that you will find our students well-prepared and enthusiastic about potential opportunities with {company}.\n\n"
-                    f"We look forward to hosting your team and facilitating valuable connections.\n\n"
-                    f"Best regards,\n"
-                    f"Placement Team"
+                    f"I hope you are doing well.\n\n"
+                    f"This is a gentle reminder regarding {company}'s upcoming campus visit scheduled for {due_date}. "
+                    f"We are looking forward to welcoming your team and facilitating meaningful interactions with our students.\n\n"
+                    f"Our placement team is making the necessary preparations to ensure a smooth and productive visit. "
+                    f"We are confident that the session will be valuable and beneficial for both sides.\n\n"
+                    f"Please let us know if there are any specific requirements or preferences from your end. We would be happy to assist."
                 )
         elif "job" in description or "requirement" in description or "jd" in description:
             subject = f"Job Requirements Follow-up - {company}"

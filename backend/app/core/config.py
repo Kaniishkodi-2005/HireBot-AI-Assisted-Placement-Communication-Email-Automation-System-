@@ -23,10 +23,12 @@ class Settings(BaseSettings):
         case_sensitive = False
         extra = "ignore"
     
+    # Database Settings
+    USE_SQLITE: bool = False
     MYSQL_HOST: str = "localhost"
     MYSQL_PORT: int = 3306
     MYSQL_USER: str = "root"
-    MYSQL_PASSWORD: str = "password"
+    MYSQL_PASSWORD: str = ""
     MYSQL_DB: str = "hirebot_db"
 
     JWT_SECRET_KEY: str = "CHANGE_ME"
@@ -55,6 +57,9 @@ class Settings(BaseSettings):
 
     @property
     def SQLALCHEMY_DATABASE_URI(self) -> str:
+        if self.USE_SQLITE:
+            return "sqlite:///./hirebot.db"
+        
         # MySQL connection string - URL encode password to handle special characters like @
         from urllib.parse import quote_plus
         encoded_password = quote_plus(self.MYSQL_PASSWORD)

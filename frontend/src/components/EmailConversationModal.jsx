@@ -13,6 +13,7 @@ function EmailConversationModal({ contact, onClose, onRefresh }) {
 
     if (contact?.conversation && Array.isArray(contact.conversation)) {
       console.log('Processing', contact.conversation.length, 'conversation items');
+      console.log('Raw conversation data:', contact.conversation.slice(0, 5)); // Show first 5 items
 
       const mappedConversations = contact.conversation.map((conv, index) => {
         let timestamp = new Date();
@@ -32,13 +33,25 @@ function EmailConversationModal({ contact, onClose, onRefresh }) {
         };
       });
 
-      // Remove duplicates based on message content, subject, and direction
+      console.log('Mapped conversations:', mappedConversations.slice(0, 5));
+      console.log('Direction breakdown:', {
+        sent: mappedConversations.filter(c => c.direction === 'sent').length,
+        received: mappedConversations.filter(c => c.direction === 'received').length
+      });
+
+      // Remove duplicates based on content and timestamp only
       const uniqueConversations = mappedConversations.filter((conv, index, self) => {
-        return index === self.findIndex(c => 
-          c.message.trim() === conv.message.trim() && 
-          c.subject === conv.subject &&
-          c.direction === conv.direction
-        );
+        return index === self.findIndex(c => {
+          const contentMatch = c.message.trim() === conv.message.trim();
+          const timestampMatch = c.timestamp.getTime() === conv.timestamp.getTime();
+          return contentMatch && timestampMatch;
+        });
+      });
+
+      console.log('After deduplication:', {
+        total: uniqueConversations.length,
+        sent: uniqueConversations.filter(c => c.direction === 'sent').length,
+        received: uniqueConversations.filter(c => c.direction === 'received').length
       });
 
       uniqueConversations.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());

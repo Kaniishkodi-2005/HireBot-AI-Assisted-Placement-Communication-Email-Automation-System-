@@ -61,9 +61,9 @@ class HRService:
         if not contact:
             return {"error": "Contact not found"}
         
-        # Strict Date Filtering: Only show emails from Jan 12, 2026 onwards
-        # Also filter out test emails as requested by user
-        project_cutoff = datetime(2026, 1, 12)
+        # More lenient date filtering - show emails from Jan 1, 2026 onwards
+        # This ensures we capture all recent emails including drafts
+        project_cutoff = datetime(2026, 1, 1)
         conversations = db.query(EmailConversation).filter(
             EmailConversation.hr_contact_id == contact_id,
             EmailConversation.sent_at >= project_cutoff,
@@ -71,8 +71,15 @@ class HRService:
         ).order_by(EmailConversation.sent_at.asc()).all()
         
         print(f"[DEBUG] get_conversation_history: Found {len(conversations)} items in DB for contact {contact_id}")
-
+        print(f"[DEBUG] Date filter: showing emails from {project_cutoff} onwards")
         
+        # Debug: Show all conversations without date filter to see what's in DB
+        all_conversations = db.query(EmailConversation).filter(
+            EmailConversation.hr_contact_id == contact_id
+        ).order_by(EmailConversation.sent_at.asc()).all()
+        print(f"[DEBUG] Total conversations in DB (no date filter): {len(all_conversations)}")
+        for conv in all_conversations:
+            print(f"[DEBUG] Conv {conv.id}: {conv.direction} - {conv.subject} - {conv.sent_at}")
         # Format conversations for frontend
         conversation_list = []
         for conv in conversations:
@@ -223,23 +230,27 @@ class HRService:
         
         try:
             # Send email using EmailService
+            print(f"[DEBUG] Attempting to send email to {contact.email}")
             success = EmailService.send_email(
                 to_email=contact.email,
                 subject=email_data.get('subject', 'Placement Communication'),
                 body=email_data.get('content', '')
             )
+            print(f"[DEBUG] Email send result: {success}")
             
             if success:
-                # Store conversation
-                # Use UTC for storage
+                print(f"[DEBUG] Email sent successfully, storing conversation...")
+                # Store conversation with current UTC time
                 now_utc = datetime.utcnow()
+                print(f"[DEBUG] Current UTC time for storage: {now_utc}")
+                print(f"[DEBUG] Storing conversation in database...")
                 
                 # Generate a hash ID so this email has a unique identifier immediately
                 # This matches the logic in EmailService to prevent duplicates during sync
                 import hashlib
                 from app.core.config import settings
                 
-                sender = settings.EMAIL_USER.lower().strip()
+                sender = settings.EMAIL_USER.lower().strip() if settings.EMAIL_USER else "placement@college.edu"
                 subject_norm = email_data.get('subject', 'Placement Communication').lower().strip()
                 
                 # We use a rough timestamp match or just rely on the fact that sync checks existing content
@@ -259,13 +270,30 @@ class HRService:
                     message_id=generated_id
                 )
                 db.add(conversation)
-                
+                print(f"[DEBUG] Added conversation to session, committing...")
+                print(f"[DEBUG] Conversation details: subject='{conversation.subject}', direction='{conversation.direction}', sent_at='{conversation.sent_at}', contact_id={contact_id}")
                 # Update contact status
                 contact.email_status = "Awaiting Response"
                 contact.draft_status = "Completed"
                 
-                db.commit()
-                print(f"[DEBUG] Manual email sent and saved with ID: {generated_id}")
+                try:
+                    db.commit()
+                    print(f"[DEBUG] Conversation stored successfully with ID: {generated_id}")
+                    
+                    # Verify the conversation was actually stored
+                    stored_conv = db.query(EmailConversation).filter(
+                        EmailConversation.hr_contact_id == contact_id,
+                        EmailConversation.message_id == generated_id
+                    ).first()
+                    if stored_conv:
+                        print(f"[DEBUG] Verification: Conversation {stored_conv.id} found in DB")
+                    else:
+                        print(f"[ERROR] Verification failed: Conversation not found in DB after commit")
+                        
+                except Exception as commit_error:
+                    print(f"[ERROR] Database commit failed: {commit_error}")
+                    db.rollback()
+                    raise commit_error
                 
                 return {
                     "message": f"Email sent successfully to {contact.email}",
@@ -392,7 +420,7 @@ class HRService:
                 # Create new reminder with new date
                 ReminderService.create_reminder(db, ReminderCreate(
                     contact_id=contact.id,
-                    description=f"Campus Visit: Rescheduled",
+                    description=f"Campus Visit - {contact.company} (Rescheduled)",
                     due_date=reschedule_info['new_date'],
                     priority="high"
                 ))
@@ -410,19 +438,41 @@ class HRService:
             if trigger_date:
                 print(f"[AUTO] Follow-up detected for {contact.company}: {trigger_date}")
                 
-                # Smarter role fallback: Use role if exists, otherwise first skill, then 'Placement Drive'
-                role = intent.get('role')
-                if not role or role.lower() == 'none':
-                    skills = intent.get('skills', [])
-                    role = skills[0].title() if skills else 'Placement Drive'
+                # Extract student requirements to create meaningful description
+                from app.utils.student_requirements import extract_student_requirements
+                requirements = extract_student_requirements(content)
                 
-                # Always use 'Campus Visit' prefix to ensure it appears in the premium UI section
-                # even if detected as a deadline (e.g. "get back by Feb 10th")
-                prefix = "Campus Visit"
+                # Build description based on requirements
+                description_parts = []
+                
+                if requirements.get('domain'):
+                    description_parts.append(f"{requirements['domain']} Students")
+                elif requirements.get('skills'):
+                    # Use first skill if no domain
+                    description_parts.append(f"{requirements['skills'][0]} Role")
+                
+                # Add count if specified
+                if requirements.get('count'):
+                    if description_parts:
+                        description_parts[0] = f"{requirements['count']} {description_parts[0]}"
+                    else:
+                        description_parts.append(f"{requirements['count']} Positions")
+                
+                # Fallback to generic if no requirements found
+                if not description_parts:
+                    role = intent.get('role')
+                    if role and role.lower() != 'none':
+                        description_parts.append(f"{role} Role")
+                    else:
+                        description_parts.append("Placement Drive")
+                
+                # Create final description
+                purpose = " - ".join(description_parts)
+                description = f"Campus Visit - {purpose}"
                 
                 ReminderService.create_reminder(db, ReminderCreate(
                     contact_id=contact.id,
-                    description=f"{prefix}: {role}",
+                    description=description,
                     due_date=trigger_date,
                     priority="high"
                 ))

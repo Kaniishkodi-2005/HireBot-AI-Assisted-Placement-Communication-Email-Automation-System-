@@ -7,8 +7,6 @@ import TemplateSelectionModal from "../components/TemplateSelectionModal";
 import EmailConfirmationModal from "../components/EmailConfirmationModal";
 import CreateTemplateModal from "../components/CreateTemplateModal";
 import ReminderNotifications from "../components/ReminderNotifications";
-import IntentDisplayModal from "../components/IntentDisplayModal";
-import { extractIntent } from "../services/hrService";
 import http from "../services/httpClient";
 
 function HrDashboardPage() {
@@ -30,9 +28,7 @@ function HrDashboardPage() {
   const [showCreateTemplate, setShowCreateTemplate] = useState(false);
   const [showRemindersPanel, setShowRemindersPanel] = useState(false);
   const [reminderCount, setReminderCount] = useState(0);
-  const [intentData, setIntentData] = useState(null);
-  const [showIntentModal, setShowIntentModal] = useState(false);
-  const [intentLoading, setIntentLoading] = useState(false);
+  const [visitReminders, setVisitReminders] = useState([]);
   const [draftingContactId, setDraftingContactId] = useState(null);
   const itemsPerPage = 6;
 
@@ -190,33 +186,6 @@ function HrDashboardPage() {
     }
   };
 
-  const handleExtractIntent = async (contact) => {
-    setIntentLoading(true);
-    try {
-      const conversationData = await fetchConversation(contact.id);
-      const hrReplies = conversationData.conversations?.filter(c => c.direction === 'received') || [];
-      const latestReply = hrReplies.length > 0 ? hrReplies[hrReplies.length - 1] : null;
-
-      if (!latestReply) {
-        setNotification({ message: "No HR reply found to analyze", type: "warning" });
-        return;
-      }
-
-      setNotification({ message: "Analyzing email with AI...", type: "info" });
-      const intent = await extractIntent(contact.company, latestReply.content);
-
-      setIntentData(intent);
-      setTemplateContact(contact); // Keep track of which contact
-      setNotification(null);
-      setShowIntentModal(true);
-    } catch (error) {
-      console.error("Intent extraction error:", error);
-      setNotification({ message: "Failed to extract intent: " + error.message, type: "error" });
-    } finally {
-      setIntentLoading(false);
-    }
-  };
-
 
   const handleTemplateSelect = async (template) => {
     console.log('Template selected:', template);
@@ -354,6 +323,12 @@ function HrDashboardPage() {
     // Initial reminder count fetch (fix persistence display)
     checkPendingReminders().then(data => {
       setReminderCount(data.length);
+      // Filter visit reminders for alert emoji
+      const visits = data.filter(r =>
+        r.description.toLowerCase().includes('visit') ||
+        (r.due_date_str && r.due_date_str.toLowerCase().includes('visit'))
+      );
+      setVisitReminders(visits);
     }).catch(err => console.error("Initial reminder fetch failed:", err));
 
     // Background polling for new emails and reminders
@@ -365,7 +340,15 @@ function HrDashboardPage() {
         loadContacts();
         return checkPendingReminders();
       }).then(data => {
-        if (data) setReminderCount(data.length);
+        if (data) {
+          setReminderCount(data.length);
+          // Filter visit reminders for alert emoji
+          const visits = data.filter(r =>
+            r.description.toLowerCase().includes('visit') ||
+            (r.due_date_str && r.due_date_str.toLowerCase().includes('visit'))
+          );
+          setVisitReminders(visits);
+        }
       }).catch(err => console.error('Background auto-sync failed:', err));
     }, 5 * 60 * 1000);
 
@@ -532,17 +515,6 @@ function HrDashboardPage() {
         />
       )}
 
-      {showIntentModal && intentData && (
-        <IntentDisplayModal
-          intent={intentData}
-          contact={templateContact}
-          onClose={() => {
-            setShowIntentModal(false);
-            setIntentData(null);
-          }}
-        />
-      )}
-
 
       {/* Header Section */}
       <header className="flex items-center justify-between">
@@ -651,9 +623,14 @@ function HrDashboardPage() {
               className="relative px-5 py-3 rounded-lg font-semibold text-base shadow-md transition-all flex items-center gap-2 text-white"
               style={{ background: 'linear-gradient(135deg, #6B64F2 0%, #8E5BF6 50%, #A656F7 100%)' }}
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-              </svg>
+              {/* Show alert emoji for urgent visits OR bell icon for regular reminders */}
+              {visitReminders.some(r => r.is_today || r.is_tomorrow) ? (
+                <span className="text-2xl animate-pulse">🚨</span>
+              ) : (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                </svg>
+              )}
               Reminders
               {reminderCount > 0 && (
                 <span className="absolute -top-2 -right-2 bg-pink-500 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center">
@@ -724,13 +701,6 @@ function HrDashboardPage() {
                     </button>
                   </div>
                   <div className="flex gap-2">
-                    <button
-                      onClick={() => handleExtractIntent(c)}
-                      disabled={intentLoading}
-                      className="flex-1 px-3 py-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-lg text-xs font-bold transition-all shadow-sm border border-indigo-100 flex items-center justify-center gap-1"
-                    >
-                      <span>🔍</span> Intent
-                    </button>
                     <button
                       onClick={() => handleAiDraft(c)}
                       disabled={draftingContactId === c.id}

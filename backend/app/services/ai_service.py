@@ -134,10 +134,29 @@ Return ONLY the JSON object, no other text."""
         # Extract skills
         skills_keywords = ['python', 'java', 'javascript', 'react', 'node', 'ai', 'ml', 
                           'machine learning', 'data science', 'web', 'mobile', 'android', 
-                          'ios', 'cloud', 'aws', 'azure', 'devops', 'testing', 'qa', 'full stack']
+                          'ios', 'cloud', 'aws', 'azure', 'devops', 'testing', 'qa', 'full stack',
+                          'embedded', 'embedded systems', 'embedded domain', 'microcontroller', 
+                          'iot', 'internet of things', 'hardware', 'firmware', 'arduino', 
+                          'raspberry pi', 'arm', 'cortex', 'rtos', 'real time', 'sensor', 'actuator']
         
         # Use regex word boundaries to avoid matching substrings like 'ai' in 'email'
         skills_mapping = {
+            'embedded': 'EMBEDDED SYSTEMS',
+            'embedded systems': 'EMBEDDED SYSTEMS',
+            'embedded domain': 'EMBEDDED SYSTEMS',
+            'microcontroller': 'MICROCONTROLLER PROGRAMMING',
+            'iot': 'INTERNET OF THINGS (IoT)',
+            'internet of things': 'INTERNET OF THINGS (IoT)',
+            'hardware': 'HARDWARE PROGRAMMING',
+            'firmware': 'FIRMWARE DEVELOPMENT',
+            'arduino': 'ARDUINO PROGRAMMING',
+            'raspberry pi': 'RASPBERRY PI',
+            'arm': 'ARM MICROCONTROLLERS',
+            'cortex': 'ARM CORTEX',
+            'rtos': 'REAL-TIME OPERATING SYSTEMS',
+            'real time': 'REAL-TIME SYSTEMS',
+            'sensor': 'SENSOR INTERFACING',
+            'actuator': 'ACTUATOR CONTROL',
             'python': 'PYTHON',
             'java': 'JAVA',
             'javascript': 'JAVASCRIPT',
@@ -261,9 +280,19 @@ Return ONLY the JSON object, no other text."""
                 except:
                     pass
         
-        # Check for relative dates
-        if any(phrase in text.lower() for phrase in ['tomorrow', 'next week', 'next month']):
-            return "Upcoming"
+        # Check for relative dates - FIXED CALCULATION
+        if 'tomorrow' in text.lower():
+            tomorrow = datetime.now() + timedelta(days=1)
+            return tomorrow.strftime("%d.%m.%Y")
+        elif 'next week' in text.lower():
+            next_week = datetime.now() + timedelta(days=7)
+            return next_week.strftime("%d.%m.%Y")
+        elif 'next month' in text.lower():
+            next_month = datetime.now() + timedelta(days=30)
+            return next_month.strftime("%d.%m.%Y")
+        elif any(phrase in text.lower() for phrase in ['today', 'this evening', 'tonight']):
+            today = datetime.now()
+            return today.strftime("%d.%m.%Y")
         
         return None
     
@@ -287,13 +316,11 @@ Return ONLY the JSON object, no other text."""
         # if not is_acknowledgment:
         
         checks = {
-            'student+keywords': 'student' in hr_lower and any(word in hr_lower for word in ['need', 'require', 'send', 'share', 'provide', 'list', 'namelist']),
-            'profile+keywords': 'profile' in hr_lower and any(word in hr_lower for word in ['send', 'share', 'provide', 'need', 'require']),
-            'candidate+keywords': 'candidate' in hr_lower and any(word in hr_lower for word in ['need', 'require', 'send', 'share', 'list']),
-            'resume+keywords': 'resume' in hr_lower and any(word in hr_lower for word in ['send', 'share', 'provide', 'need', 'require']),
-            'namelist': 'namelist' in hr_lower,
-            'name list': 'name list' in hr_lower,
-            'number pattern': bool(re.search(r'\d+\s*(?:students?|candidates?|profiles?|members?)', hr_message, re.IGNORECASE))
+            'explicit_request': any(word in hr_lower for word in ['send', 'share', 'provide', 'list', 'namelist', 'name list', 'profiles', 'resumes']),
+            'student+action': 'student' in hr_lower and any(word in hr_lower for word in ['send', 'share', 'provide', 'list', 'namelist']),
+            'profile+action': 'profile' in hr_lower and any(word in hr_lower for word in ['send', 'share', 'provide', 'need', 'require']),
+            'candidate+action': 'candidate' in hr_lower and any(word in hr_lower for word in ['send', 'share', 'list']),
+            'resume+action': 'resume' in hr_lower and any(word in hr_lower for word in ['send', 'share', 'provide'])
         }
         
         requesting_students = any(checks.values())
@@ -407,8 +434,16 @@ Return ONLY this JSON:
         Generate AI-powered draft email reply
         Returns: subject, body, extracted_intent, suggested_students, follow_up_actions
         """
+        print(f"\n[MAIN DEBUG] generate_draft_reply called - UPDATED")
+        print(f"[MAIN DEBUG] Company: {company}")
+        print(f"[MAIN DEBUG] Contact: {contact_name}")
+        print(f"[MAIN DEBUG] Students data: {len(students_data) if students_data else 0}")
+        print(f"[MAIN DEBUG] HR message length: {len(hr_message)}")
+        
         # Extract only the latest message from the thread
         clean_message = AIService._extract_latest_message(hr_message)
+        print(f"[MAIN DEBUG] Clean message length: {len(clean_message)}")
+        print(f"[MAIN DEBUG] Clean message preview: '{clean_message[:200]}...'")
         
         # Extract student requirements from the message
         from app.utils.student_requirements import extract_student_requirements
@@ -449,8 +484,22 @@ Return ONLY this JSON:
                     domain = student_requirements.get('domain', 'requested')
                     
                     # 1. Prepare context for Intro
+                    # Check if we're showing students from a different domain due to lack of exact matches
+                    domain_mismatch = False
+                    if domain and domain.lower() in ['ai', 'artificial intelligence']:
+                        # Check if any of the returned students actually have AI domain
+                        ai_students = [s for s in students_data if 'ai' in s.get('domain', '').lower() or 'artificial intelligence' in s.get('domain', '').lower()]
+                        if len(ai_students) == 0:
+                            domain_mismatch = True
+                    
                     shortfall_context = ""
-                    if req_count and actual_count < req_count:
+                    if domain_mismatch:
+                        shortfall_context = f"""
+IMPORTANT: The HR requested {req_count or 'several'} {domain} students, but we don't have students specifically in the {domain} domain.
+You MUST acknowledge this and explain that we're providing the closest match available.
+REQUIRED PHRASING: "Thank you for your interest in our students. While we don't currently have students specifically in the {domain} domain, we have identified {actual_count} students with relevant technical skills who could be suitable for {domain}-related roles. The details are shared below:"
+"""
+                    elif req_count and actual_count < req_count:
                         shortfall_context = f"""
 IMPORTANT: The HR requested {req_count} students, but we only have {actual_count} suitable candidates.
 You MUST explicitly state this in the intro.
@@ -549,6 +598,8 @@ Company: {company}
 Contact Name: {contact_name or 'Hiring Team'}
 
 Guidelines:
+- If they CONFIRM a visit date, acknowledge it warmly and express excitement
+- If they mention "confirm" or "scheduled visit", respond with preparation details
 - If they say "will connect" or "thanks", write a SHORT acknowledgment (2-3 sentences)
 - If they mention a visit date, acknowledge it warmly
 - Be natural and professional
@@ -591,10 +642,38 @@ Placement Team"""
         # Generate follow-up actions
         follow_up_actions = []
         if intent.get('visit_date'):
+            # Extract requirements for meaningful reminder description
+            from app.utils.student_requirements import extract_student_requirements
+            requirements = extract_student_requirements(clean_message)
+            
+            # Build description based on requirements
+            description_parts = []
+            
+            if requirements.get('domain'):
+                description_parts.append(f"{requirements['domain']} Students")
+            elif requirements.get('skills'):
+                description_parts.append(f"{requirements['skills'][0]} Role")
+            
+            if requirements.get('count'):
+                if description_parts:
+                    description_parts[0] = f"{requirements['count']} {description_parts[0]}"
+                else:
+                    description_parts.append(f"{requirements['count']} Positions")
+            
+            if not description_parts:
+                role = intent.get('role')
+                if role and role.lower() != 'none':
+                    description_parts.append(f"{role} Role")
+                else:
+                    description_parts.append("Placement Drive")
+            
+            purpose = " - ".join(description_parts)
+            description = f"Campus Visit - {purpose}"
+            
             follow_up_actions.append({
                 "action_type": "reminder",
                 "due_date": intent['visit_date'],
-                "description": f"Campus visit scheduled for {intent['visit_date']}",
+                "description": description,
                 "priority": "high"
             })
         
@@ -611,13 +690,72 @@ Placement Team"""
     @staticmethod
     def _fallback_draft(hr_message: str, company: str, requesting_students: bool, students_data: Optional[List[Dict]], contact_name: Optional[str] = None) -> str:
         """Fallback draft generation"""
-        print("[INFO] Using fallback draft generation")
+        # Extract only the latest message from the thread
+        clean_message = AIService._extract_latest_message(hr_message)
+        
+        print(f"\n[FALLBACK] Processing message: '{clean_message}'")
+        print(f"[FALLBACK] Original length: {len(hr_message)}, Clean length: {len(clean_message)}")
         
         greeting = f"Dear {contact_name}," if contact_name else f"Dear {company} Team,"
+        hr_lower = clean_message.lower()  # Use clean message for processing
         
-        hr_lower = hr_message.lower()
+        # Check for cancellation first (higher priority)
+        cancellation_info = AIService.detect_cancellation(clean_message)
+        if cancellation_info['is_cancelled']:
+            if OLLAMA_AVAILABLE:
+                try:
+                    prompt = f"""{AIService.SYSTEM_PROMPT}
+
+Write a brief professional email response to this HR cancellation message.
+
+HR Message:
+\"\"\"
+{clean_message}
+\"\"\"
+
+Company: {company}
+Contact Name: {contact_name or 'Hiring Team'}
+Cancellation Reason: {cancellation_info.get('reason', 'unavoidable circumstances')}
+
+Guidelines:
+- Acknowledge the cancellation with understanding
+- Express that you understand their situation
+- Keep the door open for future opportunities
+- Be professional and supportive
+- Don't be overly disappointed, be understanding
+
+Greeting Logic:
+- If Contact Name is provided, start with "Dear {contact_name},"
+- Otherwise, start with "Dear {company} Team,"
+
+End with:
+Best regards,
+Placement Team"""
+
+                    response = ollama.chat(
+                        model=OLLAMA_MODEL,
+                        messages=[{"role": "user", "content": prompt}],
+                        options={"temperature": 0.3, "num_predict": 200}
+                    )
+                    
+                    return response['message']['content'].strip()
+                    
+                except Exception as e:
+                    print(f"[ERROR] Cancellation AI response failed: {str(e)}")
+            
+            # Fallback for cancellation
+            return f"""{greeting}
+ 
+ Thank you for informing us about the cancellation. We completely understand that unavoidable circumstances can arise.
+ 
+ We appreciate you taking the time to notify us in advance. Please feel free to reach out whenever you would like to reschedule or discuss future placement opportunities.
+ 
+ We look forward to collaborating with {company} in the future.
+ 
+ Best regards,
+ Placement Team"""
         
-        if requesting_students and students_data:
+        elif requesting_students and students_data:
             student_list = []
             for s in students_data[:20]:
                 skills = s.get('skills_text', 'N/A')
@@ -627,8 +765,6 @@ Placement Team"""
                     f"• {s.get('name', 'N/A')} - {s.get('department', 'N/A')} (Roll: {s.get('roll_no', 'N/A')})\n"
                     f"  CGPA: {s.get('cgpa', 'N/A')} | Skills: {skills}"
                 )
-            
-            student_section = "\n\n".join(student_list)
             
             student_section = "\n\n".join(student_list)
             
@@ -650,27 +786,465 @@ Placement Team"""
  Best regards,
  Placement Team"""
         
-        elif 'connect' in hr_lower or 'touch' in hr_lower:
+        # Check if this is a student requirement message
+        from app.utils.student_requirements import extract_student_requirements
+        requirements = extract_student_requirements(clean_message)
+        has_actual_requirements = requirements.get('has_requirements', False)
+        
+        # Detect visit announcements/confirmations first - be more flexible
+        visit_keywords = ['visit', 'visiting', 'campus']
+        visit_indicators = ['will', 'on', 'confirm', 'scheduled', 'planning', 'pleased to inform']
+        
+        has_visit_keyword = any(keyword in hr_lower for keyword in visit_keywords)
+        has_visit_indicator = any(indicator in hr_lower for indicator in visit_indicators)
+        is_visit_message = has_visit_keyword and has_visit_indicator
+        
+        print(f"\n[DEBUG] Processing message in _fallback_draft:")
+        print(f"[DEBUG] OLLAMA_AVAILABLE: {OLLAMA_AVAILABLE}")
+        print(f"[DEBUG] has_actual_requirements: {has_actual_requirements}")
+        print(f"[DEBUG] is_visit_message: {is_visit_message}")
+        print(f"[DEBUG] Clean message: '{clean_message}'")
+        print(f"[DEBUG] HR lower contains 'visit': {'visit' in hr_lower}")
+        print(f"[DEBUG] HR lower contains 'will': {'will' in hr_lower}")
+        print(f"[DEBUG] HR lower: '{hr_lower[:100]}...'")
+        
+        if has_actual_requirements and is_visit_message:
+            # Requirements + Visit scenario - use improved fallback
+            if OLLAMA_AVAILABLE:
+                try:
+                    from app.utils.student_requirements import extract_student_requirements
+                    requirements = extract_student_requirements(clean_message)
+                    
+                    req_count = requirements.get('count')
+                    domain = requirements.get('domain')
+                    visit_date = AIService._extract_date(clean_message)
+                    
+                    prompt = f"Write a professional email response acknowledging both their visit and student requirements. Thank them for the visit opportunity. Mention we have suitable candidates available. Express excitement about the visit. Ask for preferred timing. Keep it brief and professional. Start with 'Dear {contact_name or company + ' Team'},' and end with 'Best regards, Placement Team'"
+                    
+                    response = ollama.chat(
+                        model=OLLAMA_MODEL,
+                        messages=[{"role": "user", "content": prompt}],
+                        options={"temperature": 0.3, "num_predict": 200}
+                    )
+                    
+                    return response['message']['content'].strip()
+                    
+                except Exception as e:
+                    print(f"[ERROR] Requirements+Visit AI failed: {str(e)}")
+            
+            # Direct fallback for requirements + visit
+            from app.utils.student_requirements import extract_student_requirements
+            requirements = extract_student_requirements(clean_message)
+            req_count = requirements.get('count')
+            domain = requirements.get('domain')
+            visit_date = AIService._extract_date(clean_message)
+            
+            # Only mention domain if it's clearly specified in requirements
+            if req_count and domain:
+                req_text = f"{req_count} {domain} students"
+                domain_text = f"in the {domain} domain"
+            elif domain:
+                req_text = f"{domain} students"
+                domain_text = f"in the {domain} domain"
+            elif req_count:
+                req_text = f"{req_count} students"
+                domain_text = "matching your requirements"
+            else:
+                req_text = "students"
+                domain_text = "suitable for your needs"
+            
+            date_text = f" {visit_date}" if visit_date and 'tomorrow' in str(visit_date).lower() else ""
+            
             return f"""{greeting}
  
- Thank you for your response. We look forward to connecting with you soon.
+ Thank you for informing us about your visit{date_text}. We are excited to welcome your team to our institution.
  
- Please feel free to reach out whenever you're ready to discuss placement opportunities or if you need any information from our end.
+ Our placement team will ensure all necessary arrangements are made for a productive and engaging session. We look forward to showcasing our talented students and facilitating meaningful interactions.
+ 
+ Please let us know your preferred date and time for the visit, and if you have any specific requirements.
+ 
+ Best regards,
+ Placement Team"""
+            # Get available student count for this scenario
+            available_count = "several"
+            if students_data:
+                available_count = str(len(students_data))
+            
+            # Use AI to generate response for requirement + visit scenario
+            if OLLAMA_AVAILABLE:
+                try:
+                    from app.utils.student_requirements import extract_student_requirements
+                    requirements = extract_student_requirements(hr_message)
+                    
+                    req_count = requirements.get('count')
+                    domain = requirements.get('domain')
+                    
+                    prompt = f"""{AIService.SYSTEM_PROMPT}
+
+Write a brief professional email response to this HR message that mentions both student requirements and a campus visit.
+
+HR Message:
+\"\"\"
+{hr_message}
+\"\"\"
+
+Company: {company}
+Contact Name: {contact_name or 'Hiring Team'}
+Extracted Requirements: {req_count} {domain} students
+Available Students: {available_count} suitable candidates
+
+Guidelines:
+- Acknowledge their requirement for students
+- Mention how many suitable candidates you have available
+- Express excitement about the campus visit
+- Offer to share profiles if they want them beforehand
+- Keep it professional and welcoming
+- Don't automatically send student lists
+
+Greeting Logic:
+- If Contact Name is provided, start with "Dear {contact_name},"
+- Otherwise, start with "Dear {company} Team,"
+
+End with:
+Best regards,
+Placement Team"""
+
+                    response = ollama.chat(
+                        model=OLLAMA_MODEL,
+                        messages=[{"role": "user", "content": prompt}],
+                        options={
+                            "temperature": settings.OLLAMA_TEMPERATURE,
+                            "num_predict": settings.OLLAMA_MAX_TOKENS
+                        }
+                    )
+                    
+                    return response['message']['content'].strip()
+                    
+                except Exception as e:
+                    print(f"[ERROR] AI response generation failed: {str(e)}")
+            
+            # Fallback: Use AI to generate simple response
+            if OLLAMA_AVAILABLE:
+                try:
+                    from app.utils.student_requirements import extract_student_requirements
+                    requirements = extract_student_requirements(hr_message)
+                    
+                    req_count = requirements.get('count')
+                    domain = requirements.get('domain')
+                    
+                    prompt = f"""{AIService.SYSTEM_PROMPT}
+
+Write a brief professional email response acknowledging student requirements and campus visit.
+
+HR Message:
+\"\"\"
+{hr_message}
+\"\"\"
+
+Company: {company}
+Contact Name: {contact_name or 'Hiring Team'}
+Requirements: {req_count} {domain} students
+Available: {available_count} suitable candidates
+
+Guidelines:
+- Thank them for the opportunity
+- Acknowledge their specific requirements
+- Mention how many candidates you have available
+- Mention the campus visit
+- Offer to share profiles if needed
+- Keep it welcoming and professional
+
+Greeting: Dear {contact_name or company + ' Team'},
+End with: Best regards, Placement Team"""
+
+                    response = ollama.chat(
+                        model=OLLAMA_MODEL,
+                        messages=[{"role": "user", "content": prompt}],
+                        options={"temperature": 0.3, "num_predict": 200}
+                    )
+                    
+                    return response['message']['content'].strip()
+                    
+                except Exception as e:
+                    print(f"[ERROR] Fallback AI generation failed: {str(e)}")
+            
+            # Final AI-powered fallback
+            if OLLAMA_AVAILABLE:
+                try:
+                    from app.utils.student_requirements import extract_student_requirements
+                    requirements = extract_student_requirements(clean_message)
+                    
+                    req_count = requirements.get('count')
+                    domain = requirements.get('domain')
+                    
+                    prompt = f"""{AIService.SYSTEM_PROMPT}
+
+Write a brief professional email response acknowledging student requirements and campus visit.
+
+HR Message:
+\"\"\"
+{clean_message}
+\"\"\"
+
+Company: {company}
+Contact Name: {contact_name or 'Hiring Team'}
+Requirements: {req_count} {domain} students
+Available: {available_count} suitable candidates
+
+Guidelines:
+- Thank them for the opportunity
+- Acknowledge their specific requirements if mentioned
+- Mention how many candidates you have available
+- Express excitement about the campus visit
+- Offer to share profiles if needed
+- Keep it welcoming and professional
+- Don't mention specific dates unless they provided one
+
+Greeting Logic:
+- If Contact Name is provided, start with "Dear {contact_name},"
+- Otherwise, start with "Dear {company} Team,"
+
+End with:
+Best regards,
+Placement Team"""
+
+                    response = ollama.chat(
+                        model=OLLAMA_MODEL,
+                        messages=[{"role": "user", "content": prompt}],
+                        options={"temperature": 0.3, "num_predict": 200}
+                    )
+                    
+                    return response['message']['content'].strip()
+                    
+                except Exception as e:
+                    print(f"[ERROR] Final AI generation failed: {str(e)}")
+            
+            # Last resort AI fallback
+            if OLLAMA_AVAILABLE:
+                try:
+                    prompt = f"""{AIService.SYSTEM_PROMPT}
+
+Write a brief professional email response to this HR message.
+
+HR Message:
+\"\"\"
+{clean_message}
+\"\"\"
+
+Company: {company}
+Contact Name: {contact_name or 'Hiring Team'}
+Available Students: {available_count} suitable candidates
+
+Guidelines:
+- Respond appropriately to their message content
+- Be professional and welcoming
+- If they mention requirements, acknowledge them
+- If they mention a visit, express excitement
+- Offer assistance as appropriate
+- Keep it concise and relevant
+
+Greeting Logic:
+- If Contact Name is provided, start with "Dear {contact_name},"
+- Otherwise, start with "Dear {company} Team,"
+
+End with:
+Best regards,
+Placement Team"""
+
+                    response = ollama.chat(
+                        model=OLLAMA_MODEL,
+                        messages=[{"role": "user", "content": prompt}],
+                        options={"temperature": 0.3, "num_predict": 200}
+                    )
+                    
+                    return response['message']['content'].strip()
+                    
+                except Exception as e:
+                    print(f"[ERROR] Last resort AI failed: {str(e)}")
+            
+            # Absolute final AI fallback
+            if OLLAMA_AVAILABLE:
+                try:
+                    prompt = f"""{AIService.SYSTEM_PROMPT}
+
+Write a brief professional email response to this HR message.
+
+HR Message:
+\"\"\"
+{clean_message}
+\"\"\"
+
+Company: {company}
+Contact Name: {contact_name or 'Hiring Team'}
+
+Guidelines:
+- Thank them for their message
+- Be professional and welcoming
+- Acknowledge any requirements or visit mentions appropriately
+- Don't make assumptions about dates or specifics
+- Keep it brief and helpful
+
+Greeting Logic:
+- If Contact Name is provided, start with "Dear {contact_name},"
+- Otherwise, start with "Dear {company} Team,"
+
+End with:
+Best regards,
+Placement Team"""
+
+                    response = ollama.chat(
+                        model=OLLAMA_MODEL,
+                        messages=[{"role": "user", "content": prompt}],
+                        options={"temperature": 0.3, "num_predict": 200}
+                    )
+                    
+                    return response['message']['content'].strip()
+                    
+                except Exception as e:
+                    print(f"[ERROR] Final AI fallback failed: {str(e)}")
+            
+            # Emergency fallback only
+            return f"""{greeting}
+ 
+ Thank you for your message. We appreciate your interest in our students and institution.
+ 
+ Please let us know if you need any specific information or assistance.
  
  Best regards,
  Placement Team"""
         
-        elif 'thank' in hr_lower:
+        elif is_visit_message:
+            print(f"[DEBUG] Entering visit message branch")
+            # Detect visit announcements/confirmations
+            if OLLAMA_AVAILABLE:
+                print(f"[DEBUG] Ollama is available, trying AI response")
+                try:
+                    visit_date = AIService._extract_date(clean_message)
+                    print(f"[DEBUG] Extracted visit date: {visit_date}")
+                    
+                    prompt = f"""{AIService.SYSTEM_PROMPT}
+
+Write a brief professional email response to this HR visit message.
+
+HR Message:
+\"\"\"
+{clean_message}
+\"\"\"
+
+Company: {company}
+Contact Name: {contact_name or 'Hiring Team'}
+Visit Date: {visit_date or 'as mentioned'}
+
+Guidelines:
+- Thank them for informing about the visit
+- Express excitement about welcoming their team
+- Mention preparation and arrangements will be made
+- Offer to assist with any specific requirements
+- Be welcoming and professional
+- If they mention a specific date, acknowledge it
+- Ask for preferred date/time if they requested it
+
+Greeting Logic:
+- If Contact Name is provided, start with "Dear {contact_name},"
+- Otherwise, start with "Dear {company} Team,"
+
+End with:
+Best regards,
+Placement Team"""
+
+                    print(f"[DEBUG] Calling Ollama with model: {OLLAMA_MODEL}")
+                    response = ollama.chat(
+                        model=OLLAMA_MODEL,
+                        messages=[{"role": "user", "content": prompt}],
+                        options={"temperature": 0.3, "num_predict": 300}
+                    )
+                    
+                    result = response['message']['content'].strip()
+                    print(f"[DEBUG] AI response successful: {result[:100]}...")
+                    return result
+                    
+                except Exception as e:
+                    print(f"[ERROR] Visit AI response failed: {str(e)}")
+                    print(f"[ERROR] Exception type: {type(e).__name__}")
+                    import traceback
+                    traceback.print_exc()
+                    # Try simpler AI prompt
+                    try:
+                        simple_prompt = f"Write a professional email thanking them for the visit announcement and expressing excitement to welcome them. Mention arranging preparations. Ask for preferred date/time. Start with 'Dear {contact_name or company + ' Team'},' and end with 'Best regards, Placement Team'"
+                        
+                        response = ollama.chat(
+                            model=OLLAMA_MODEL,
+                            messages=[{"role": "user", "content": simple_prompt}],
+                            options={"temperature": 0.3, "num_predict": 200}
+                        )
+                        
+                        result = response['message']['content'].strip()
+                        print(f"[DEBUG] Simple AI response successful: {result[:100]}...")
+                        return result
+                    except Exception as e2:
+                        print(f"[ERROR] Simple visit AI failed: {str(e2)}")
+            else:
+                print(f"[DEBUG] Ollama not available, using fallback")
+            
+            print(f"[DEBUG] Using visit fallback response")
+            # Visit fallback with proper date handling
+            visit_date = AIService._extract_date(clean_message)
+            date_text = f" in the {visit_date}" if visit_date and 'week' in visit_date.lower() else f" on {visit_date}" if visit_date else ""
+            
             return f"""{greeting}
  
- You're welcome! We're always happy to assist with your recruitment needs.
+ Thank you for informing us about your planned visit{date_text}. We are excited to welcome your team to our institution.
  
- Please don't hesitate to reach out if you need any further information or support.
+ Our placement team will ensure all necessary arrangements are made for a productive and engaging session. We look forward to showcasing our talented students and facilitating meaningful interactions.
+ 
+ Please let us know your preferred date and time for the visit, and if you have any specific requirements.
  
  Best regards,
  Placement Team"""
         
         else:
+            print(f"[DEBUG] Entering else branch - general response")
+            # Use AI for all other responses
+            if OLLAMA_AVAILABLE:
+                try:
+                    prompt = f"""{AIService.SYSTEM_PROMPT}
+
+Write a brief professional email response to this HR message.
+
+HR Message:
+\"\"\"
+{hr_message}
+\"\"\"
+
+Company: {company}
+Contact Name: {contact_name or 'Hiring Team'}
+
+Guidelines:
+- Respond appropriately to their message tone and content
+- Be professional and helpful
+- Keep it concise and relevant
+- Maintain a positive, collaborative tone
+
+Greeting Logic:
+- If Contact Name is provided, start with "Dear {contact_name},"
+- Otherwise, start with "Dear {company} Team,"
+
+End with:
+Best regards,
+Placement Team"""
+
+                    response = ollama.chat(
+                        model=OLLAMA_MODEL,
+                        messages=[{"role": "user", "content": prompt}],
+                        options={"temperature": 0.3, "num_predict": 200}
+                    )
+                    
+                    return response['message']['content'].strip()
+                    
+                except Exception as e:
+                    print(f"[ERROR] General AI response failed: {str(e)}")
+            
+            # Final fallback
             return f"""{greeting}
  
  Thank you for your response. We appreciate your interest in our students.
