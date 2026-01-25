@@ -260,26 +260,26 @@ function StudentDashboardPage() {
         <div className="space-y-6">
           {/* Top Row: Metrics Cards */}
           <section className="grid md:grid-cols-3 gap-6">
-            <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow">
-              <div className="absolute top-0 right-0 p-4 transition-opacity">
-                <span className="text-6xl text-blue-600">👥</span>
+            <div className="bg-white rounded-xl p-6 relative overflow-hidden group transition-all duration-300" style={{ boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
+              <div className="absolute top-4 right-4">
+                <span className="text-4xl text-gray-400">👥</span>
               </div>
-              <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Total Students</p>
-              <p className="text-3xl font-bold mt-2 text-slate-800">{metrics?.total_students || 0}</p>
+              <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider mb-2">Total Students</p>
+              <p className="text-4xl font-bold text-slate-800">{metrics?.total_students || 0}</p>
             </div>
-            <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow">
-              <div className="absolute top-0 right-0 p-4 transition-opacity">
-                <span className="text-6xl text-emerald-600">🏢</span>
+            <div className="bg-white rounded-xl p-6 relative overflow-hidden group transition-all duration-300" style={{ boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
+              <div className="absolute top-4 right-4">
+                <span className="text-4xl text-gray-400">🏢</span>
               </div>
-              <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Department Count</p>
-              <p className="text-3xl font-bold mt-2 text-slate-800">{metrics?.department_count || 0}</p>
+              <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider mb-2">Department Count</p>
+              <p className="text-4xl font-bold text-slate-800">{metrics?.department_count || 0}</p>
             </div>
-            <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow">
-              <div className="absolute top-0 right-0 p-4 transition-opacity">
-                <span className="text-6xl text-amber-600">🎓</span>
+            <div className="bg-white rounded-xl p-6 relative overflow-hidden group transition-all duration-300" style={{ boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
+              <div className="absolute top-4 right-4">
+                <span className="text-4xl text-gray-400">🎓</span>
               </div>
-              <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Domain Count</p>
-              <p className="text-3xl font-bold mt-2 text-slate-800">{metrics?.domain_count || 0}</p>
+              <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider mb-2">Domain Count</p>
+              <p className="text-4xl font-bold text-slate-800">{metrics?.domain_count || 0}</p>
             </div>
           </section>
 

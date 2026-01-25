@@ -175,11 +175,15 @@ HireBot Team"""
             
             if not user:
                 logger.info(f"P7. Creating new user for Google email: {email}")
+                
+                # Special case: bitplacement28@gmail.com gets admin role
+                role = "admin" if email == "bitplacement28@gmail.com" else "user"
+                
                 user = User(
                     email=email,
                     password_hash="",
                     organization="Google User",
-                    role="user",
+                    role=role,
                     is_approved=True,
                     is_active=True
                 )

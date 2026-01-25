@@ -688,3 +688,195 @@ def analyze_hr_message(request: MessageAnalysisRequest):
         print(f"Message analysis error: {str(e)}")
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error analyzing message: {str(e)}")
+
+
+# ============================================================================
+# HR REPLY NOTIFICATION ENDPOINTS
+# ============================================================================
+
+# In-memory storage for HR reply notifications
+HR_REPLY_NOTIFICATIONS = []
+
+@router.post("/notifications/clear-all")
+def clear_all_notifications():
+    """Clear all existing notifications"""
+    global HR_REPLY_NOTIFICATIONS
+    HR_REPLY_NOTIFICATIONS = []
+    return {"message": "All notifications cleared"}
+
+@router.get("/notifications")
+def get_hr_reply_notifications():
+    """Get all pending HR reply notifications"""
+    return {"notifications": HR_REPLY_NOTIFICATIONS}
+
+@router.post("/notifications/dismiss/{notification_id}")
+def dismiss_hr_reply_notification(notification_id: str):
+    """Dismiss a specific HR reply notification"""
+    global HR_REPLY_NOTIFICATIONS
+    HR_REPLY_NOTIFICATIONS = [n for n in HR_REPLY_NOTIFICATIONS if n["id"] != notification_id]
+    return {"message": "Notification dismissed"}
+
+@router.post("/notifications/check")
+def check_for_new_hr_replies(db: Session = Depends(get_db)):
+    """Check for new HR replies and create notifications"""
+    try:
+        # Get all contacts
+        contacts = db.query(HRContact).all()
+        new_notifications = []
+        
+        for contact in contacts:
+            # Check if there are new received emails for this contact
+            from app.models.email_models import EmailConversation
+            from datetime import datetime, timedelta
+            
+            # Check for received emails in the last 30 minutes (increased window)
+            recent_cutoff = datetime.utcnow() - timedelta(minutes=30)
+            
+            recent_replies = db.query(EmailConversation).filter(
+                EmailConversation.hr_contact_id == contact.id,
+                EmailConversation.direction == "received",
+                EmailConversation.sent_at >= recent_cutoff
+            ).order_by(EmailConversation.sent_at.desc()).all()
+            
+            for reply in recent_replies:
+                # Check if we already have a notification for this reply
+                existing_notification = next(
+                    (n for n in HR_REPLY_NOTIFICATIONS if n.get("email_id") == reply.id),
+                    None
+                )
+                
+                if not existing_notification:
+                    notification = {
+                        "id": f"hr_reply_{reply.id}_{int(datetime.utcnow().timestamp())}",
+                        "email_id": reply.id,
+                        "contact": {
+                            "id": contact.id,
+                            "name": contact.name,
+                            "company": contact.company,
+                            "email": contact.email
+                        },
+                        "subject": reply.subject,
+                        "timestamp": reply.sent_at.isoformat() + 'Z' if reply.sent_at else datetime.utcnow().isoformat() + 'Z',
+                        "created_at": datetime.utcnow().isoformat()
+                    }
+                    HR_REPLY_NOTIFICATIONS.append(notification)
+                    new_notifications.append(notification)
+                    print(f"[NOTIFICATION] Created for {contact.name} from {contact.company} - Email ID: {reply.id}")
+        
+        return {
+            "message": f"Found {len(new_notifications)} new HR replies",
+            "new_notifications": new_notifications,
+            "total_notifications": len(HR_REPLY_NOTIFICATIONS)
+        }
+        
+    except Exception as e:
+        print(f"Error checking for HR replies: {str(e)}")
+        return {"error": str(e), "new_notifications": []}
+
+@router.post("/notifications/force-check")
+def force_check_notifications(db: Session = Depends(get_db)):
+    """Force check for all received emails and create notifications"""
+    try:
+        from app.models.email_models import EmailConversation
+        from datetime import datetime, timedelta
+        
+        # Check for received emails in the last hour
+        recent_cutoff = datetime.utcnow() - timedelta(hours=1)
+        
+        all_recent_replies = db.query(EmailConversation).filter(
+            EmailConversation.direction == "received",
+            EmailConversation.sent_at >= recent_cutoff
+        ).order_by(EmailConversation.sent_at.desc()).all()
+        
+        new_notifications = []
+        
+        for reply in all_recent_replies:
+            # Get contact info
+            contact = db.query(HRContact).filter(HRContact.id == reply.hr_contact_id).first()
+            if not contact:
+                continue
+                
+            # Check if notification already exists
+            existing_notification = next(
+                (n for n in HR_REPLY_NOTIFICATIONS if n.get("email_id") == reply.id),
+                None
+            )
+            
+            if not existing_notification:
+                notification = {
+                    "id": f"hr_reply_{reply.id}_{int(datetime.utcnow().timestamp())}",
+                    "email_id": reply.id,
+                    "contact": {
+                        "id": contact.id,
+                        "name": contact.name,
+                        "company": contact.company,
+                        "email": contact.email
+                    },
+                    "subject": reply.subject,
+                    "timestamp": reply.sent_at.isoformat() if reply.sent_at else datetime.utcnow().isoformat(),
+                    "created_at": datetime.utcnow().isoformat()
+                }
+                HR_REPLY_NOTIFICATIONS.append(notification)
+                new_notifications.append(notification)
+                print(f"[FORCE CHECK] Created notification for {contact.name} from {contact.company} - Email ID: {reply.id}")
+        
+        return {
+            "message": f"Force check created {len(new_notifications)} notifications",
+            "new_notifications": new_notifications,
+            "total_notifications": len(HR_REPLY_NOTIFICATIONS)
+        }
+        
+    except Exception as e:
+        print(f"Error in force check: {str(e)}")
+        return {"error": str(e), "new_notifications": []}
+    """Create notifications for all existing received emails"""
+    try:
+        from app.models.email_models import EmailConversation
+        from datetime import datetime
+        
+        # Get all received emails
+        all_received = db.query(EmailConversation).filter(
+            EmailConversation.direction == "received"
+        ).order_by(EmailConversation.sent_at.desc()).all()
+        
+        new_notifications = []
+        
+        for reply in all_received:
+            # Get contact info
+            contact = db.query(HRContact).filter(HRContact.id == reply.hr_contact_id).first()
+            if not contact:
+                continue
+                
+            # Check if notification already exists
+            existing_notification = next(
+                (n for n in HR_REPLY_NOTIFICATIONS if n.get("email_id") == reply.id),
+                None
+            )
+            
+            if not existing_notification:
+                notification = {
+                    "id": f"hr_reply_{reply.id}_{int(datetime.utcnow().timestamp())}",
+                    "email_id": reply.id,
+                    "contact": {
+                        "id": contact.id,
+                        "name": contact.name,
+                        "company": contact.company,
+                        "email": contact.email
+                    },
+                    "subject": reply.subject,
+                    "timestamp": reply.sent_at.isoformat() if reply.sent_at else datetime.utcnow().isoformat(),
+                    "created_at": datetime.utcnow().isoformat()
+                }
+                HR_REPLY_NOTIFICATIONS.append(notification)
+                new_notifications.append(notification)
+                print(f"[NOTIFICATION] Created for {contact.name} from {contact.company} - Email ID: {reply.id}")
+        
+        return {
+            "message": f"Created {len(new_notifications)} notifications for all HR replies",
+            "new_notifications": new_notifications,
+            "total_notifications": len(HR_REPLY_NOTIFICATIONS)
+        }
+        
+    except Exception as e:
+        print(f"Error creating notifications: {str(e)}")
+        return {"error": str(e), "new_notifications": []}

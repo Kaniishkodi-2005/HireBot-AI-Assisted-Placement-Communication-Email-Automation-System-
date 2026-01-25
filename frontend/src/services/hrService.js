@@ -212,3 +212,34 @@ export async function testHrParsing() {
   const testEmail = "We need 5 students with strong expertise in AI. Please send the shortlisted student list after one month.";
   return await parseHrReply(testEmail);
 }
+
+// HR Reply Notification Functions
+export async function getHrReplyNotifications() {
+  const res = await http.get('/hr/notifications');
+  return res.data;
+}
+
+export async function dismissHrReplyNotification(notificationId) {
+  const res = await http.post(`/hr/notifications/dismiss/${notificationId}`);
+  return res.data;
+}
+
+export async function checkForNewHrReplies() {
+  const res = await http.post('/hr/notifications/check');
+  return res.data;
+}
+
+export async function createNotificationsForAllReplies() {
+  const res = await http.post('/hr/notifications/create-all');
+  return res.data;
+}
+
+export async function clearAllNotifications() {
+  const res = await http.post('/hr/notifications/clear-all');
+  return res.data;
+}
+
+export async function forceCheckNotifications() {
+  const res = await http.post('/hr/notifications/force-check');
+  return res.data;
+}

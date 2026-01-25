@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { fetchHrContacts, uploadHrCsv, generateDraft, fetchConversation, syncConversation, sendEmail, sendFollowUp, checkFollowUps, fetchReceivedEmails, resetAllStatuses, createTemplate, deleteTemplate, testHrParsing, generateAiDraft, createReminder, checkPendingReminders } from "../services/hrService";
+import { fetchHrContacts, uploadHrCsv, generateDraft, fetchConversation, syncConversation, sendEmail, sendFollowUp, checkFollowUps, fetchReceivedEmails, resetAllStatuses, createTemplate, deleteTemplate, testHrParsing, generateAiDraft, createReminder, checkPendingReminders, getHrReplyNotifications, dismissHrReplyNotification, checkForNewHrReplies, createNotificationsForAllReplies, clearAllNotifications } from "../services/hrService";
 import Notification from "../components/Notification";
 import EmailConversationModal from "../components/EmailConversationModal";
 import TemplateSelectionModal from "../components/TemplateSelectionModal";
 import EmailConfirmationModal from "../components/EmailConfirmationModal";
 import CreateTemplateModal from "../components/CreateTemplateModal";
 import ReminderNotifications from "../components/ReminderNotifications";
+import HrReplyNotification from "../components/HrReplyNotification";
+import "../components/HrReplyNotification.css";
 import http from "../services/httpClient";
 
 function HrDashboardPage() {
@@ -30,10 +32,19 @@ function HrDashboardPage() {
   const [reminderCount, setReminderCount] = useState(0);
   const [visitReminders, setVisitReminders] = useState([]);
   const [draftingContactId, setDraftingContactId] = useState(null);
+  const [hrReplyNotifications, setHrReplyNotifications] = useState([]);
   const itemsPerPage = 6;
 
   const handleViewConversation = async (contact) => {
     console.log('Opening conversation for contact (instant):', contact.id);
+    
+    // Dismiss any notifications for this contact when viewing conversation
+    const contactNotifications = hrReplyNotifications.filter(n => n.contact.id === contact.id);
+    for (const notification of contactNotifications) {
+      await dismissHrReplyNotification(notification.id);
+    }
+    setHrReplyNotifications(prev => prev.filter(n => n.contact.id !== contact.id));
+    
     try {
       // 1. Fetch cached data immediately and open modal
       const initialData = await fetchConversation(contact.id);
@@ -331,9 +342,30 @@ function HrDashboardPage() {
       setVisitReminders(visits);
     }).catch(err => console.error("Initial reminder fetch failed:", err));
 
-    // Background polling for new emails and reminders
-    // Poll every 5 minutes
-    const interval = setInterval(() => {
+    // Load existing HR reply notifications (keep them persistent)
+    getHrReplyNotifications().then(data => {
+      setHrReplyNotifications(data.notifications || []);
+    }).catch(err => console.error("Initial notification fetch failed:", err));
+
+    // Background polling for new emails, reminders, and HR reply notifications
+    // Poll every 30 seconds for notifications, 5 minutes for emails
+    const notificationInterval = setInterval(() => {
+      console.log('Checking for new HR reply notifications...');
+      checkForNewHrReplies().then(data => {
+        if (data.new_notifications && data.new_notifications.length > 0) {
+          setHrReplyNotifications(prev => {
+            // Filter out duplicates by checking email_id
+            const existingEmailIds = new Set(prev.map(n => n.email_id));
+            const newUniqueNotifications = data.new_notifications.filter(
+              n => !existingEmailIds.has(n.email_id)
+            );
+            return [...prev, ...newUniqueNotifications];
+          });
+        }
+      }).catch(err => console.error('Notification check failed:', err));
+    }, 30 * 1000); // 30 seconds
+
+    const emailInterval = setInterval(() => {
       console.log('Background auto-sync triggered...');
       fetchReceivedEmails().then(() => {
         // Refresh contacts and reminder count after sync
@@ -350,9 +382,12 @@ function HrDashboardPage() {
           setVisitReminders(visits);
         }
       }).catch(err => console.error('Background auto-sync failed:', err));
-    }, 5 * 60 * 1000);
+    }, 5 * 60 * 1000); // 5 minutes
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(notificationInterval);
+      clearInterval(emailInterval);
+    };
   }, []);
 
   // Filter contacts based on search
@@ -447,8 +482,24 @@ function HrDashboardPage() {
     !c.email_status || c.email_status?.toLowerCase().includes("not started")
   ).length;
 
+  // HR Reply Notification Handlers
+  const handleDismissNotification = async (notificationId) => {
+    try {
+      await dismissHrReplyNotification(notificationId);
+      setHrReplyNotifications(prev => prev.filter(n => n.id !== notificationId));
+    } catch (error) {
+      console.error('Failed to dismiss notification:', error);
+    }
+  };
+
   return (
     <div className="space-y-6 min-h-screen bg-gray-50">
+      {/* HR Reply Notifications - positioned after header */}
+      <HrReplyNotification
+        notifications={hrReplyNotifications}
+        onDismiss={handleDismissNotification}
+      />
+
       {showRemindersPanel && (
         <ReminderNotifications
           onClose={() => setShowRemindersPanel(false)}
@@ -551,33 +602,33 @@ function HrDashboardPage() {
 
       {/* Summary Cards */}
       <section className="grid md:grid-cols-4 gap-6">
-        <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow">
-          <div className="absolute top-0 right-0 p-4 transition-opacity">
-            <span className="text-5xl text-blue-600">👥</span>
+        <div className="bg-white rounded-xl p-6 relative overflow-hidden group transition-all duration-300" style={{ boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
+          <div className="absolute top-4 right-4">
+            <span className="text-3xl text-gray-400">👥</span>
           </div>
-          <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Total HR Contacts</p>
-          <p className="text-3xl font-bold mt-2 text-slate-800">{totalContacts}</p>
+          <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider mb-2">Total HR Contacts</p>
+          <p className="text-4xl font-bold text-slate-800">{totalContacts}</p>
         </div>
-        <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow">
-          <div className="absolute top-0 right-0 p-4 transition-opacity">
-            <span className="text-5xl text-gray-600">📝</span>
+        <div className="bg-white rounded-xl p-6 relative overflow-hidden group transition-all duration-300" style={{ boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
+          <div className="absolute top-4 right-4">
+            <span className="text-3xl text-gray-400">📝</span>
           </div>
-          <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Not Started</p>
-          <p className="text-3xl font-bold mt-2 text-slate-800">{notStartedContacts}</p>
+          <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider mb-2">Not Started</p>
+          <p className="text-4xl font-bold text-slate-800">{notStartedContacts}</p>
         </div>
-        <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow">
-          <div className="absolute top-0 right-0 p-4 transition-opacity">
-            <span className="text-5xl text-amber-600">⏰</span>
+        <div className="bg-white rounded-xl p-6 relative overflow-hidden group transition-all duration-300" style={{ boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
+          <div className="absolute top-4 right-4">
+            <span className="text-3xl text-gray-400">⏰</span>
           </div>
-          <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Unreplied</p>
-          <p className="text-3xl font-bold mt-2 text-slate-800">{unrepliedContacts}</p>
+          <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider mb-2">Unreplied</p>
+          <p className="text-4xl font-bold text-slate-800">{unrepliedContacts}</p>
         </div>
-        <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow">
-          <div className="absolute top-0 right-0 p-4 transition-opacity">
-            <span className="text-5xl text-emerald-600">✉️</span>
+        <div className="bg-white rounded-xl p-6 relative overflow-hidden group transition-all duration-300" style={{ boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
+          <div className="absolute top-4 right-4">
+            <span className="text-3xl text-gray-400">✉️</span>
           </div>
-          <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Replied</p>
-          <p className="text-3xl font-bold mt-2 text-slate-800">{repliedContacts}</p>
+          <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider mb-2">Replied</p>
+          <p className="text-4xl font-bold text-slate-800">{repliedContacts}</p>
         </div>
       </section>
 
@@ -648,7 +699,7 @@ function HrDashboardPage() {
               >
                 {/* Header with Avatar and Info */}
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow-md">
+                  <div className="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-md" style={{ background: 'linear-gradient(135deg, #6366F1, #9333EA)' }}>
                     {getInitials(c.name)}
                   </div>
                   <div className="flex-1 min-w-0">
@@ -688,14 +739,13 @@ function HrDashboardPage() {
                   <div className="flex gap-2">
                     <button
                       onClick={() => handleViewConversation(c)}
-                      className="flex-[3] px-3 py-2 rounded-lg text-xs font-semibold text-white shadow-sm transition-all"
-                      style={{ background: 'linear-gradient(135deg, #6B64F2 0%, #8E5BF6 50%, #A656F7 100%)' }}
+                      className="flex-[3] px-3 py-2 rounded-lg text-xs font-semibold text-white shadow-sm transition-all bg-purple-600 hover:bg-purple-700"
                     >
                       View Conversation
                     </button>
                     <button
                       onClick={() => handleDraftClick(c)}
-                      className="flex-1 px-3 py-2 border border-blue-600 text-blue-600 hover:bg-blue-50 rounded-lg text-xs font-semibold transition-all"
+                      className="flex-1 px-3 py-2 border border-purple-600 text-purple-600 hover:bg-purple-50 rounded-lg text-xs font-semibold transition-all"
                     >
                       Draft
                     </button>
