@@ -109,7 +109,8 @@ function EditStudentsPage() {
         </div>
         <button
           onClick={() => navigate("/dashboard/students")}
-          className="text-sm rounded bg-gray-200 px-3 py-2 hover:bg-gray-300 text-gray-900"
+          className="px-4 py-2 rounded-lg font-semibold text-sm shadow-sm transition-all text-white flex items-center gap-2"
+          style={{ background: 'linear-gradient(135deg, #6B64F2 0%, #8E5BF6 50%, #A656F7 100%)' }}
         >
           Back to Dashboard
         </button>

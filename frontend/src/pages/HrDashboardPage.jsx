@@ -8,6 +8,7 @@ import EmailConfirmationModal from "../components/EmailConfirmationModal";
 import CreateTemplateModal from "../components/CreateTemplateModal";
 import ReminderNotifications from "../components/ReminderNotifications";
 import HrReplyNotification from "../components/HrReplyNotification";
+import Pagination from "../components/Pagination";
 import "../components/HrReplyNotification.css";
 import http from "../services/httpClient";
 
@@ -33,18 +34,18 @@ function HrDashboardPage() {
   const [visitReminders, setVisitReminders] = useState([]);
   const [draftingContactId, setDraftingContactId] = useState(null);
   const [hrReplyNotifications, setHrReplyNotifications] = useState([]);
-  const itemsPerPage = 6;
+  const itemsPerPage = 9;
 
   const handleViewConversation = async (contact) => {
     console.log('Opening conversation for contact (instant):', contact.id);
-    
+
     // Dismiss any notifications for this contact when viewing conversation
     const contactNotifications = hrReplyNotifications.filter(n => n.contact.id === contact.id);
     for (const notification of contactNotifications) {
       await dismissHrReplyNotification(notification.id);
     }
     setHrReplyNotifications(prev => prev.filter(n => n.contact.id !== contact.id));
-    
+
     try {
       // 1. Fetch cached data immediately and open modal
       const initialData = await fetchConversation(contact.id);
@@ -575,7 +576,7 @@ function HrDashboardPage() {
         </div>
 
         <div className="flex items-center gap-3">
-          <label className="cursor-pointer bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold text-sm shadow-sm transition-all flex items-center gap-2">
+          <label className="cursor-pointer text-white px-4 py-2 rounded-lg font-semibold text-sm shadow-sm transition-all flex items-center gap-2" style={{ background: 'linear-gradient(135deg, #6B64F2 0%, #8E5BF6 50%, #A656F7 100%)' }}>
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
             </svg>
@@ -643,7 +644,7 @@ function HrDashboardPage() {
             placeholder="Search by name, company, or email..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-white border border-slate-300 rounded-lg pl-12 pr-4 py-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-sm"
+            className="w-full bg-white border border-slate-300 rounded-lg pl-12 pr-4 py-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 shadow-sm"
           />
         </div>
       </div>
@@ -739,7 +740,8 @@ function HrDashboardPage() {
                   <div className="flex gap-2">
                     <button
                       onClick={() => handleViewConversation(c)}
-                      className="flex-[3] px-3 py-2 rounded-lg text-xs font-semibold text-white shadow-sm transition-all bg-purple-600 hover:bg-purple-700"
+                      className="flex-[3] px-3 py-2 rounded-lg text-xs font-semibold text-white shadow-sm transition-all hover:opacity-90 hover:shadow-md"
+                      style={{ background: 'linear-gradient(135deg, #6B64F2 0%, #8E5BF6 50%, #A656F7 100%)' }}
                     >
                       View Conversation
                     </button>
@@ -772,32 +774,16 @@ function HrDashboardPage() {
       )
       }
 
-      {/* Pagination */}
-      {
-        filteredContacts.length > itemsPerPage && (
-          <div className="p-4 border-t border-slate-100 flex items-center justify-between bg-slate-50/50">
-            <p className="text-sm text-slate-500">
-              Page <span className="font-semibold text-slate-800">{currentPage}</span> of <span className="font-semibold text-slate-800">{totalPages || 1}</span>
-            </p>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                disabled={currentPage === 1}
-                className="px-4 py-2 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg text-sm text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all font-medium shadow-sm"
-              >
-                Previous
-              </button>
-              <button
-                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                disabled={currentPage === totalPages}
-                className="px-4 py-2 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg text-sm text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all font-medium shadow-sm"
-              >
-                Next
-              </button>
-            </div>
-          </div>
-        )
-      }
+      {/* Premium Pagination */}
+      {filteredContacts.length > itemsPerPage && (
+        <div className="pb-8">
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            onPageChange={setCurrentPage}
+          />
+        </div>
+      )}
     </div >
   );
 }

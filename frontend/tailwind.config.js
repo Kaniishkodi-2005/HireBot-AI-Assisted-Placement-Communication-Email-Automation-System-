@@ -6,7 +6,7 @@ export default {
       colors: {
         "hb-bg": "#f8fafc",
         "hb-card": "#ffffff",
-        "hb-primary": "#2563eb",
+        "hb-primary": "#6B64F2",
         "hb-accent": "#16a34a"
       }
     }

@@ -14,7 +14,7 @@ function TemplateSelectionModal({ contact, onClose, onTemplateSelect, onCreateTe
       icon: "🎓"
     },
     {
-      id: "internship_opportunities", 
+      id: "internship_opportunities",
       title: "Internship Opportunities",
       description: "Discuss internship programs for current students",
       icon: "💼"
@@ -44,7 +44,7 @@ function TemplateSelectionModal({ contact, onClose, onTemplateSelect, onCreateTe
   const handleTemplateSelect = async (template) => {
     setSelectedTemplate(template.id);
     setLoading(true);
-    
+
     try {
       await onTemplateSelect(template);
       // Don't call onClose() here - let the parent handle the modal transition
@@ -78,11 +78,10 @@ function TemplateSelectionModal({ contact, onClose, onTemplateSelect, onCreateTe
               key={template.id}
               onClick={() => handleTemplateSelect(template)}
               disabled={loading}
-              className={`w-full text-left p-4 rounded-lg border transition-all ${
-                selectedTemplate === template.id
-                  ? "border-blue-500 bg-blue-50"
+              className={`w-full text-left p-4 rounded-lg border transition-all ${selectedTemplate === template.id
+                  ? "border-purple-500 bg-purple-50"
                   : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"
-              } ${loading ? "opacity-50 cursor-not-allowed" : ""}`}
+                } ${loading ? "opacity-50 cursor-not-allowed" : ""}`}
             >
               <div className="flex items-start gap-3">
                 <span className="text-2xl">{template.icon}</span>
@@ -91,12 +90,12 @@ function TemplateSelectionModal({ contact, onClose, onTemplateSelect, onCreateTe
                   <p className="text-xs text-slate-500 mt-1">{template.description}</p>
                 </div>
                 {loading && selectedTemplate === template.id && (
-                  <div className="animate-spin w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full"></div>
+                  <div className="animate-spin w-4 h-4 border-2 border-purple-500 border-t-transparent rounded-full"></div>
                 )}
               </div>
             </button>
           ))}
-          
+
           {customTemplates.length > 0 && (
             <>
               <div className="border-t border-slate-200 pt-3 mt-4">
@@ -104,13 +103,12 @@ function TemplateSelectionModal({ contact, onClose, onTemplateSelect, onCreateTe
                 {customTemplates.map((template) => (
                   <div key={`custom-${template.id}`} className="relative">
                     <button
-                      onClick={() => handleTemplateSelect({id: `custom-${template.id}`, ...template})}
+                      onClick={() => handleTemplateSelect({ id: `custom-${template.id}`, ...template })}
                       disabled={loading}
-                      className={`w-full text-left p-4 rounded-lg border transition-all mb-2 ${
-                        selectedTemplate === `custom-${template.id}`
+                      className={`w-full text-left p-4 rounded-lg border transition-all mb-2 ${selectedTemplate === `custom-${template.id}`
                           ? "border-purple-500 bg-purple-50"
                           : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"
-                      } ${loading ? "opacity-50 cursor-not-allowed" : ""}`}
+                        } ${loading ? "opacity-50 cursor-not-allowed" : ""}`}
                     >
                       <div className="flex items-start gap-3">
                         <span className="text-2xl">📝</span>
@@ -143,17 +141,17 @@ function TemplateSelectionModal({ contact, onClose, onTemplateSelect, onCreateTe
               </div>
             </>
           )}
-          
+
           <div className="border-t border-slate-200 pt-3 mt-4">
             <button
               onClick={onCreateTemplate}
               disabled={loading}
-              className="w-full text-left p-4 rounded-lg border border-dashed border-slate-300 hover:border-blue-400 hover:bg-blue-50 transition-all"
+              className="w-full text-left p-4 rounded-lg border border-dashed border-slate-300 hover:border-purple-400 hover:bg-purple-50 transition-all"
             >
               <div className="flex items-start gap-3">
                 <span className="text-2xl">➕</span>
                 <div className="flex-1">
-                  <h4 className="font-semibold text-blue-600 text-sm">Create New Template</h4>
+                  <h4 className="font-semibold text-purple-600 text-sm">Create New Template</h4>
                   <p className="text-xs text-slate-500 mt-1">Design a custom email template</p>
                 </div>
               </div>

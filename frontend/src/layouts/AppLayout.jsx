@@ -33,11 +33,7 @@ function AppLayout() {
         <div className="flex items-center justify-between">
           {/* Left: Logo */}
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center shadow-md">
-              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-              </svg>
-            </div>
+            <img src="/hirebot-logo.jpg" alt="Logo" className="w-10 h-10 rounded-full shadow-md object-cover" />
             <h1 className="text-3xl font-black text-gray-900 tracking-tight" style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}>HireBot</h1>
           </div>
 
@@ -54,8 +50,8 @@ function AppLayout() {
               <Link
                 to="/dashboard/admin"
                 className={`px-5 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 ${location.pathname.includes("/dashboard/admin")
-                    ? "bg-hb-primary text-white shadow-md"
-                    : "text-gray-700 hover:bg-gray-100 hover:text-hb-primary"
+                  ? "bg-hb-primary text-white shadow-md"
+                  : "text-gray-700 hover:bg-gray-100 hover:text-hb-primary"
                   }`}
               >
                 Admin Dashboard
@@ -68,18 +64,20 @@ function AppLayout() {
                 <Link
                   to="/dashboard/hr"
                   className={`px-5 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 ${location.pathname.includes("/dashboard/hr")
-                      ? "bg-hb-primary text-white shadow-md"
-                      : "text-gray-700 hover:bg-gray-100 hover:text-hb-primary"
+                    ? "text-white shadow-md"
+                    : "text-gray-700 hover:bg-gray-100 hover:text-hb-primary"
                     }`}
+                  style={location.pathname.includes("/dashboard/hr") ? { background: 'linear-gradient(135deg, #6B64F2 0%, #8E5BF6 50%, #A656F7 100%)' } : {}}
                 >
                   HR Contacts
                 </Link>
                 <Link
                   to="/dashboard/students"
                   className={`px-5 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 ${location.pathname.includes("/dashboard/students")
-                      ? "bg-hb-primary text-white shadow-md"
-                      : "text-gray-700 hover:bg-gray-100 hover:text-hb-primary"
+                    ? "text-white shadow-md"
+                    : "text-gray-700 hover:bg-gray-100 hover:text-hb-primary"
                     }`}
+                  style={location.pathname.includes("/dashboard/students") ? { background: 'linear-gradient(135deg, #6B64F2 0%, #8E5BF6 50%, #A656F7 100%)' } : {}}
                 >
                   Students
                 </Link>

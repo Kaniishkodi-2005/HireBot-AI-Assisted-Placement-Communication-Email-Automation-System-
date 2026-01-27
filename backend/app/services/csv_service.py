@@ -7,6 +7,8 @@ from sqlalchemy.orm import Session
 
 from app.models.hr_contact_model import HRContact
 from app.models.student_model import Student
+from app.models.reminder_model import Reminder
+from app.models.email_models import EmailConversation
 
 
 class CSVService:
@@ -130,10 +132,22 @@ class CSVService:
             available_cols = ', '.join(df.columns.tolist())
             raise ValueError(f"Could not find email column. Available columns: {available_cols}. Please ensure your file has an email column (e.g., 'email', 'email_address', 'mail').")
         
-        # If replace_mode, delete all existing contacts first
+        # If replace_mode, preparation for delete (but commit later for safety)
         if replace_mode:
+            # Safe cleanup before delete - Handle Foreign Key Constraints
+            # 1. Delete Linkages (Conversations, Reminders, etc.)
+            # This is a destructive operation inherent to "Replace All" mode
+            contacts_to_delete = db.query(HRContact).all()
+            contact_ids = [c.id for c in contacts_to_delete]
+            
+            if contact_ids:
+                db.query(Reminder).filter(Reminder.contact_id.in_(contact_ids)).delete(synchronize_session=False)
+                db.query(EmailConversation).filter(EmailConversation.hr_contact_id.in_(contact_ids)).delete(synchronize_session=False)
+            
+            # 2. Queue contacts for deletion (will be committed only if valid data exists)
             db.query(HRContact).delete()
-            db.commit()
+            # db.commit() REMOVED to ensure transactional safety
+
         
         created_contacts: List[HRContact] = []
         updated_contacts: List[HRContact] = []

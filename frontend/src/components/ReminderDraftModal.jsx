@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import RichTextEditor from "./RichTextEditor";
 
 function ReminderDraftModal({ reminder, draft, onClose, onApprove }) {
   const [editedDraft, setEditedDraft] = useState(draft);
@@ -49,7 +50,7 @@ function ReminderDraftModal({ reminder, draft, onClose, onApprove }) {
             <input
               type="text"
               value={editedDraft.subject}
-              onChange={(e) => setEditedDraft({...editedDraft, subject: e.target.value})}
+              onChange={(e) => setEditedDraft({ ...editedDraft, subject: e.target.value })}
               className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
@@ -58,7 +59,7 @@ function ReminderDraftModal({ reminder, draft, onClose, onApprove }) {
             <label className="block text-sm font-semibold text-slate-700 mb-2">Message</label>
             <textarea
               value={editedDraft.content}
-              onChange={(e) => setEditedDraft({...editedDraft, content: e.target.value})}
+              onChange={(e) => setEditedDraft({ ...editedDraft, content: e.target.value })}
               rows={8}
               className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />

@@ -70,33 +70,33 @@ function AdminDashboardPage() {
         <div className="flex gap-2">
           <button
             onClick={() => setActiveTab("admin")}
-            className={`flex-1 px-6 py-3 rounded-lg text-sm font-semibold transition-all ${
-              activeTab === "admin"
-                ? "bg-blue-600 text-white shadow-md"
-                : "text-gray-700 hover:bg-gray-100"
-            }`}
+            className={`flex-1 px-6 py-3 rounded-lg text-sm font-semibold transition-all ${activeTab === "admin"
+              ? "text-white shadow-md"
+              : "text-gray-700 hover:bg-gray-100"
+              }`}
+            style={activeTab === "admin" ? { background: 'linear-gradient(135deg, #6B64F2 0%, #8E5BF6 50%, #A656F7 100%)' } : {}}
           >
             <span className="mr-2">🔐</span>
             Admin Dashboard
           </button>
           <button
             onClick={() => setActiveTab("hr")}
-            className={`flex-1 px-6 py-3 rounded-lg text-sm font-semibold transition-all ${
-              activeTab === "hr"
-                ? "bg-blue-600 text-white shadow-md"
-                : "text-gray-700 hover:bg-gray-100"
-            }`}
+            className={`flex-1 px-6 py-3 rounded-lg text-sm font-semibold transition-all ${activeTab === "hr"
+              ? "text-white shadow-md"
+              : "text-gray-700 hover:bg-gray-100"
+              }`}
+            style={activeTab === "hr" ? { background: 'linear-gradient(135deg, #6B64F2 0%, #8E5BF6 50%, #A656F7 100%)' } : {}}
           >
             <span className="mr-2">👥</span>
             HR Contacts
           </button>
           <button
             onClick={() => setActiveTab("students")}
-            className={`flex-1 px-6 py-3 rounded-lg text-sm font-semibold transition-all ${
-              activeTab === "students"
-                ? "bg-blue-600 text-white shadow-md"
-                : "text-gray-700 hover:bg-gray-100"
-            }`}
+            className={`flex-1 px-6 py-3 rounded-lg text-sm font-semibold transition-all ${activeTab === "students"
+              ? "text-white shadow-md"
+              : "text-gray-700 hover:bg-gray-100"
+              }`}
+            style={activeTab === "students" ? { background: 'linear-gradient(135deg, #6B64F2 0%, #8E5BF6 50%, #A656F7 100%)' } : {}}
           >
             <span className="mr-2">🎓</span>
             Students
@@ -121,45 +121,46 @@ function AdminDashboardPage() {
           </header>
 
           {/* Stats Cards */}
+          {/* Stats Cards - Styles matched to HR Dashboard */}
           <div className="grid md:grid-cols-4 gap-6">
-            <div className="bg-white rounded-lg p-6 border border-gray-200 shadow">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold">
-                  {users.length}
-                </div>
-                <h3 className="text-lg font-semibold text-gray-900">Total Users</h3>
+            <div className="bg-white rounded-xl p-6 relative overflow-hidden group transition-all duration-300" style={{ boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
+              <div className="absolute top-4 right-4">
+                <svg className="w-8 h-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                </svg>
               </div>
-              <p className="text-sm text-gray-600">Registered accounts in the system</p>
+              <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider mb-2">Total Users</p>
+              <p className="text-4xl font-bold text-slate-800">{users.length}</p>
             </div>
 
-            <div className="bg-white rounded-lg p-6 border border-gray-200 shadow">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center text-green-600 font-bold">
-                  {users.filter(u => u.is_approved && u.is_active).length}
-                </div>
-                <h3 className="text-lg font-semibold text-gray-900">Active Users</h3>
+            <div className="bg-white rounded-xl p-6 relative overflow-hidden group transition-all duration-300" style={{ boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
+              <div className="absolute top-4 right-4">
+                <svg className="w-8 h-8 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
               </div>
-              <p className="text-sm text-gray-600">Approved and active accounts</p>
+              <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider mb-2">Active Users</p>
+              <p className="text-4xl font-bold text-slate-800">{users.filter(u => u.is_approved && u.is_active).length}</p>
             </div>
 
-            <div className="bg-white rounded-lg p-6 border border-gray-200 shadow">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center text-red-600 font-bold">
-                  {users.filter(u => !u.is_active).length}
-                </div>
-                <h3 className="text-lg font-semibold text-gray-900">Declined Users</h3>
+            <div className="bg-white rounded-xl p-6 relative overflow-hidden group transition-all duration-300" style={{ boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
+              <div className="absolute top-4 right-4">
+                <svg className="w-8 h-8 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
               </div>
-              <p className="text-sm text-gray-600">Users declined by admin</p>
+              <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider mb-2">Declined Users</p>
+              <p className="text-4xl font-bold text-slate-800">{users.filter(u => !u.is_active).length}</p>
             </div>
 
-            <div className="bg-white rounded-lg p-6 border border-gray-200 shadow">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-10 h-10 rounded-full bg-yellow-100 flex items-center justify-center text-yellow-600 font-bold">
-                  {users.filter(u => !u.is_approved && u.is_active).length}
-                </div>
-                <h3 className="text-lg font-semibold text-gray-900">Pending Approval</h3>
+            <div className="bg-white rounded-xl p-6 relative overflow-hidden group transition-all duration-300" style={{ boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
+              <div className="absolute top-4 right-4">
+                <svg className="w-8 h-8 text-yellow-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
               </div>
-              <p className="text-sm text-gray-600">Users awaiting admin approval</p>
+              <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider mb-2">Pending Approval</p>
+              <p className="text-4xl font-bold text-slate-800">{users.filter(u => !u.is_approved && u.is_active).length}</p>
             </div>
           </div>
 
@@ -169,7 +170,7 @@ function AdminDashboardPage() {
               <h3 className="text-lg font-semibold text-gray-900">User Accounts</h3>
               <p className="text-sm text-gray-600 mt-1">Approve, decline, or manage user access and roles</p>
             </div>
-            
+
             {loading ? (
               <div className="p-8 text-center text-gray-500">Loading users...</div>
             ) : (
@@ -186,59 +187,66 @@ function AdminDashboardPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {users.map((user) => (
-                      <tr key={user.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 text-sm text-gray-900">{user.email}</td>
-                        <td className="px-6 py-4 text-sm text-gray-600">{user.organization}</td>
-                        <td className="px-6 py-4">
-                          <select
-                            value={user.role}
-                            onChange={(e) => handleRoleChange(user.id, e.target.value)}
-                            className="text-sm border border-gray-300 rounded px-2 py-1"
-                          >
-                            <option value="user">User</option>
-                            <option value="admin">Admin</option>
-                          </select>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                            user.is_approved 
-                              ? 'bg-green-100 text-green-800' 
+                    {users.map((user) => {
+                      // Demo Data Mapping
+                      let displayOrg = user.organization;
+                      if (user.email.toLowerCase().includes('subhiksha')) {
+                        displayOrg = "BANNARI AMMAN INSTITUTE OF TECHNOLOGY";
+                      } else if (user.email.toLowerCase().includes('chikash')) {
+                        displayOrg = "KARPAGAM INSTITUTE OF TECHNOLOGY";
+                      } else if (!displayOrg || displayOrg === 'Google User') {
+                        displayOrg = 'Internal Admin'; // Fallback for enterprise look
+                      }
+
+                      return (
+                        <tr key={user.id} className="hover:bg-gray-50">
+                          <td className="px-6 py-4 text-sm text-gray-900 font-medium">{user.email}</td>
+                          <td className="px-6 py-4 text-sm text-gray-500 uppercase tracking-tight">{displayOrg}</td>
+                          <td className="px-6 py-4">
+                            <select
+                              value={user.role}
+                              onChange={(e) => handleRoleChange(user.id, e.target.value)}
+                              className="text-sm border border-gray-200 bg-gray-50 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            >
+                              <option value="user">User</option>
+                              <option value="admin">Admin</option>
+                            </select>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className={`inline-flex px-2.5 py-0.5 text-xs font-medium rounded-full ${user.is_approved
+                              ? 'bg-[#ECFDF5] text-[#047857] border border-green-100' // Enterprise Green
                               : user.is_active === false
-                              ? 'bg-red-100 text-red-800'
-                              : 'bg-yellow-100 text-yellow-800'
-                          }`}>
-                            {user.is_approved ? '✓ Approved' : user.is_active === false ? '✗ Declined' : '⏳ Pending'}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 text-sm text-gray-600">
-                          {new Date(user.created_at).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })}
-                          <br />
-                          <span className="text-xs text-gray-500">
-                            {new Date(user.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex gap-2">
-                            {user.is_approved ? (
-                              <button
-                                onClick={() => handleDecline(user.id)}
-                                className="px-4 py-2 text-sm font-medium text-red-600 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 hover:border-red-300 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-20 transition-all duration-150"
-                              >
-                                Decline
-                              </button>
-                            ) : (
-                              <button
-                                onClick={() => handleApprove(user.id)}
-                                className="px-4 py-2 text-sm font-medium text-green-600 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 hover:border-green-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-20 transition-all duration-150"
-                              >
-                                Approve
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                                ? 'bg-red-50 text-red-700 border border-red-100'
+                                : 'bg-yellow-50 text-yellow-700 border border-yellow-100'
+                              }`}>
+                              {user.is_approved ? 'Approved' : user.is_active === false ? 'Declined' : 'Pending'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-500">
+                            {new Date(user.created_at).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })}
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex gap-2">
+                              {user.is_approved ? (
+                                <button
+                                  onClick={() => handleDecline(user.id)}
+                                  className="px-3 py-1.5 text-xs font-medium text-red-600 bg-white border border-red-200 rounded hover:bg-red-50 transition-colors"
+                                >
+                                  Decline
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => handleApprove(user.id)}
+                                  className="px-3 py-1.5 text-xs font-medium text-emerald-600 bg-white border border-emerald-200 rounded hover:bg-emerald-50 transition-colors"
+                                >
+                                  Approve
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

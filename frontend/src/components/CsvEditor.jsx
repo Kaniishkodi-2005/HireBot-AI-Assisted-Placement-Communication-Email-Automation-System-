@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
-function CsvEditor({ data, columns, onSave, onCancel, title }) {
+function CsvEditor({ data, columns, onSave, onCancel, title, disableUppercase = false }) {
   const [editedData, setEditedData] = useState([]);
   const [hasChanges, setHasChanges] = useState(false);
+  const tableContainerRef = useRef(null);
 
   useEffect(() => {
     // Convert data to editable format
@@ -14,10 +15,35 @@ function CsvEditor({ data, columns, onSave, onCancel, title }) {
   }, [data]);
 
   const handleCellChange = (rowIndex, column, value) => {
+    const colLower = column.toLowerCase();
+    let newValue = value;
+
+    // Global Uppercase for text fields (exclude email and cgpa)
+    if (!disableUppercase && colLower !== 'email' && colLower !== 'cgpa') {
+      newValue = newValue.toUpperCase();
+    }
+
+    // Specific Validations
+
+    // 1. Name: Letters and spaces only
+    if (colLower === 'name') {
+      if (!/^[a-zA-Z\s]*$/.test(newValue)) return;
+    }
+
+    // 2. Department, Domain, Company: No numbers allowed
+    if (['department', 'domain', 'company'].includes(colLower)) {
+      if (/\d/.test(newValue)) return;
+    }
+
+    // 3. CGPA: Numbers and dots only
+    if (colLower === 'cgpa') {
+      if (!/^[0-9.]*$/.test(newValue)) return;
+    }
+
     const updated = [...editedData];
     updated[rowIndex] = {
       ...updated[rowIndex],
-      [column]: value
+      [column]: newValue
     };
     setEditedData(updated);
     setHasChanges(true);
@@ -28,9 +54,22 @@ function CsvEditor({ data, columns, onSave, onCancel, title }) {
     columns.forEach(col => {
       newRow[col.key] = "";
     });
-    newRow._id = editedData.length;
+    // Use Date.now() for unique key
+    newRow._id = Date.now();
+
+    // Append to bottom instead of top
     setEditedData([...editedData, newRow]);
     setHasChanges(true);
+
+    // Auto-scroll to bottom
+    setTimeout(() => {
+      if (tableContainerRef.current) {
+        tableContainerRef.current.scrollTo({
+          top: tableContainerRef.current.scrollHeight,
+          behavior: 'smooth'
+        });
+      }
+    }, 100);
   };
 
   const handleDeleteRow = (rowIndex) => {
@@ -41,7 +80,50 @@ function CsvEditor({ data, columns, onSave, onCancel, title }) {
     }
   };
 
+  const [error, setError] = useState("");
+  const [errorRowIndex, setErrorRowIndex] = useState(-1);
+
   const handleSave = () => {
+    setError("");
+    setErrorRowIndex(-1);
+
+    // Validation: Check for empty fields
+    for (let i = 0; i < editedData.length; i++) {
+      const row = editedData[i];
+      for (const col of columns) {
+        const val = row[col.key];
+
+        // Empty check
+        if (!val || val.toString().trim() === "") {
+          setError(`Please fill all required fields!`);
+          setErrorRowIndex(i);
+
+          if (tableContainerRef.current) {
+            const rowElement = tableContainerRef.current.querySelector(`tr[data-index="${i}"]`);
+            if (rowElement) {
+              rowElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+          }
+          return;
+        }
+
+        // Email check
+        const colLower = col.key.toLowerCase();
+        if ((colLower === 'email' || col.type === 'email') && !val.toString().includes('@')) {
+          setError(`Please enter valid email addresses!`);
+          setErrorRowIndex(i);
+
+          if (tableContainerRef.current) {
+            const rowElement = tableContainerRef.current.querySelector(`tr[data-index="${i}"]`);
+            if (rowElement) {
+              rowElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+          }
+          return;
+        }
+      }
+    }
+
     // Remove _id from data before saving
     const dataToSave = editedData.map(({ _id, ...rest }) => rest);
     onSave(dataToSave);
@@ -72,11 +154,21 @@ function CsvEditor({ data, columns, onSave, onCancel, title }) {
         {hasChanges && (
           <p className="text-xs text-yellow-600 mt-2">⚠️ You have unsaved changes</p>
         )}
+        {error && (
+          <div className="mt-2 text-left">
+            <p className="text-sm text-red-600 font-semibold flex items-center gap-2">
+              ❌ {error}
+            </p>
+          </div>
+        )}
       </div>
 
-      <div className="overflow-x-auto max-h-[70vh]">
+      <div
+        ref={tableContainerRef}
+        className="overflow-x-auto max-h-[70vh]"
+      >
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 sticky top-0">
+          <thead className="bg-gray-50 sticky top-0 z-10">
             <tr>
               {columns.map((col) => (
                 <th
@@ -93,7 +185,14 @@ function CsvEditor({ data, columns, onSave, onCancel, title }) {
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
             {editedData.map((row, rowIndex) => (
-              <tr key={row._id} className="hover:bg-gray-50">
+              <tr
+                key={row._id}
+                data-index={rowIndex}
+                className={`transition-colors ${rowIndex === errorRowIndex
+                  ? 'bg-red-50 border-2 border-red-400'
+                  : 'hover:bg-gray-50'
+                  }`}
+              >
                 {columns.map((col) => (
                   <td key={col.key} className="px-4 py-2">
                     <input
@@ -122,7 +221,8 @@ function CsvEditor({ data, columns, onSave, onCancel, title }) {
       <div className="p-4 border-t border-gray-200 bg-gray-50">
         <button
           onClick={handleAddRow}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium"
+          className="px-4 py-2 text-white rounded-lg text-sm font-medium shadow-sm transition-all"
+          style={{ background: 'linear-gradient(135deg, #6B64F2 0%, #8E5BF6 50%, #A656F7 100%)' }}
         >
           + Add New Row
         </button>

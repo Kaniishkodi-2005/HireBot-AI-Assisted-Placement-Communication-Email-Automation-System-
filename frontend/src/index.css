@@ -11,6 +11,7 @@ body {
 .text-white {
   color: theme('colors.slate.900');
 }
+
 .bg-slate-900 {
   background-color: theme('colors.slate.50');
 }
@@ -21,6 +22,7 @@ body {
     opacity: 0;
     transform: translateY(-20px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -33,9 +35,12 @@ body {
 
 /* Pulse animation for notification badge */
 @keyframes pulse-notification {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: scale(1);
   }
+
   50% {
     transform: scale(1.1);
   }
@@ -44,5 +49,3 @@ body {
 .animate-pulse-notification {
   animation: pulse-notification 2s infinite;
 }
-
-

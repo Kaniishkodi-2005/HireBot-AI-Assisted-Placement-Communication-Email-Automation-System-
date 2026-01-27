@@ -184,11 +184,25 @@ function EmailConversationModal({ contact, onClose, onRefresh }) {
                     <div className={`flex ${isSent ? 'justify-end' : 'justify-start'}`}>
                       <div className={`flex gap-3 max-w-[75%] ${isSent ? 'flex-row-reverse' : 'flex-row'}`}>
                         {/* Avatar */}
-                        <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center ${isSent
-                          ? 'bg-purple-600 text-white'
+                        <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center overflow-hidden ${isSent
+                          ? 'bg-purple-600'
                           : 'bg-gray-300 text-gray-700'
                           }`}>
-                          {isSent ? 'P' : 'H'}
+                          {isSent ? (
+                            <img
+                              src="/avatar.png"
+                              alt="Placement Cell"
+                              className="w-full h-full object-cover"
+                              onError={(e) => { e.target.style.display = 'none'; e.target.parentElement.innerText = 'P'; }}
+                            />
+                          ) : (
+                            <img
+                              src="/hr_avatar.png"
+                              alt="HR"
+                              className="w-full h-full object-cover"
+                              onError={(e) => { e.target.style.display = 'none'; e.target.parentElement.innerText = 'H'; }}
+                            />
+                          )}
                         </div>
 
                         {/* Message Bubble */}

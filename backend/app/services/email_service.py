@@ -28,20 +28,29 @@ class EmailService:
     ) -> bool:
         """Send an email via SMTP"""
         
+        def log_debug(msg):
+            try:
+                with open("email_debug.log", "a") as f:
+                    f.write(f"{datetime.now()} - {msg}\n")
+            except: pass
+
+        log_debug(f"Starting send_email to {to_email}")
+
         # Get credentials from settings
         EMAIL_USER = settings.EMAIL_USER
         EMAIL_PASS = settings.EMAIL_PASS
         SMTP_HOST = settings.SMTP_HOST
         SMTP_PORT = settings.SMTP_PORT
         
-        print(f"[EMAIL] EMAIL_USER from settings: {EMAIL_USER or 'None'}")
-        print(f"[EMAIL] EMAIL_PASS from settings: {'***' if EMAIL_PASS else 'None'}")
+        log_debug(f"Credentials loaded: USER={EMAIL_USER}, HOST={SMTP_HOST}")
         
         if not EMAIL_USER or not EMAIL_PASS:
+            log_debug("ERROR: Email credentials not configured")
             print(f"[EMAIL ERROR] Email credentials not configured")
             return False
         
         if not EmailService.validate_email(to_email):
+            log_debug(f"ERROR: Invalid recipient email: {to_email}")
             print(f"[EMAIL ERROR] Invalid recipient email: {to_email}")
             return False
         
@@ -63,9 +72,11 @@ class EmailService:
                 for file_path in attachments:
                     EmailService._attach_file(msg, file_path)
             
+            log_debug(f"Connecting to SMTP server {SMTP_HOST}:{SMTP_PORT}")
             print(f"[EMAIL] Connecting to SMTP server {SMTP_HOST}:{SMTP_PORT}")
             with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=15) as server:
                 server.starttls()
+                log_debug("Logging in...")
                 print(f"[EMAIL] Logging in with user: {EMAIL_USER}")
                 server.login(EMAIL_USER, EMAIL_PASS)
                 
@@ -73,13 +84,18 @@ class EmailService:
                 if cc:
                     recipients.extend(cc)
                 
+                log_debug(f"Sending message to: {recipients}")
                 print(f"[EMAIL] Sending message to recipients: {recipients}")
                 server.send_message(msg)
                 print(f"[EMAIL] ✓ Email sent successfully to {to_email}")
+                log_debug("Email sent successfully")
             
             return True
             
         except Exception as e:
+            log_debug(f"EXCEPTION: {str(e)}")
+            import traceback
+            log_debug(traceback.format_exc())
             print(f"[EMAIL ERROR] Failed to send email: {str(e)}")
             return False
     

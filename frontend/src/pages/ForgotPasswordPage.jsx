@@ -18,7 +18,7 @@ function ForgotPasswordPage() {
     setError("");
     setMessage("");
     setLoading(true);
-    
+
     try {
       await http.post('/auth/forgot-password', { email });
       setMessage("OTP sent to your email successfully!");
@@ -34,24 +34,24 @@ function ForgotPasswordPage() {
     e.preventDefault();
     setError("");
     setMessage("");
-    
+
     if (newPassword !== confirmPassword) {
       setError("Passwords do not match.");
       return;
     }
-    
+
     if (newPassword.length < 6) {
       setError("Password must be at least 6 characters long.");
       return;
     }
-    
+
     setLoading(true);
-    
+
     try {
-      await http.post('/auth/reset-password', { 
-        email, 
-        otp, 
-        new_password: newPassword 
+      await http.post('/auth/reset-password', {
+        email,
+        otp,
+        new_password: newPassword
       });
       setMessage("Password reset successfully! Redirecting to login...");
       setTimeout(() => navigate("/login"), 2000);
@@ -67,12 +67,8 @@ function ForgotPasswordPage() {
       <div className="w-full max-w-md bg-hb-card rounded-xl shadow-xl p-8 space-y-6 border border-gray-200">
         <div className="text-center">
           <div className="flex items-center justify-center gap-3 mb-3">
-            <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center shadow-md">
-              <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-              </svg>
-            </div>
-            <h1 className="text-4xl font-black text-gray-900" style={{fontFamily: 'Inter, system-ui, -apple-system, sans-serif'}}>HireBot</h1>
+            <img src="/hirebot-logo.jpg" alt="HireBot" className="w-12 h-12 rounded-full shadow-md object-cover" />
+            <h1 className="text-4xl font-black text-gray-900" style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}>HireBot</h1>
           </div>
           <p className="text-sm text-gray-600">AI-Assisted Placement Communication & Shortlisting System</p>
         </div>
@@ -114,7 +110,8 @@ function ForgotPasswordPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full rounded-lg bg-hb-primary px-4 py-3 text-sm font-semibold text-white hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-hb-primary focus:ring-offset-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full rounded-lg px-4 py-3 text-sm font-semibold text-white hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{ background: 'linear-gradient(135deg, #6B64F2 0%, #8E5BF6 50%, #A656F7 100%)' }}
             >
               {loading ? "Sending OTP..." : "Send OTP"}
             </button>
@@ -174,7 +171,8 @@ function ForgotPasswordPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full rounded-lg bg-hb-primary px-4 py-3 text-sm font-semibold text-white hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-hb-primary focus:ring-offset-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full rounded-lg px-4 py-3 text-sm font-semibold text-white hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{ background: 'linear-gradient(135deg, #6B64F2 0%, #8E5BF6 50%, #A656F7 100%)' }}
             >
               {loading ? "Resetting Password..." : "Reset Password"}
             </button>
@@ -182,7 +180,7 @@ function ForgotPasswordPage() {
         )}
 
         <div className="text-center">
-          <Link to="/login" className="text-sm text-blue-600 hover:text-blue-700 hover:underline">
+          <Link to="/login" className="text-sm text-purple-600 hover:text-purple-700 hover:underline">
             ← Back to Login
           </Link>
         </div>

@@ -36,17 +36,17 @@ function EditHrContactsPage() {
       const csvContent = convertToCsv(editedData);
       const blob = new Blob([csvContent], { type: 'text/csv' });
       const file = new File([blob], 'hr_contacts.csv', { type: 'text/csv' });
-      
+
       // Upload the CSV file
       const result = await uploadHrCsv(file, true, false);
       setNotification({
         message: `Successfully saved ${result.length} HR contact(s)!`,
         type: "success"
       });
-      
+
       // Reload data
       await loadContacts();
-      
+
       // Navigate back after 2 seconds
       setTimeout(() => {
         navigate("/dashboard/hr");
@@ -64,12 +64,20 @@ function EditHrContactsPage() {
 
   const convertToCsv = (data) => {
     if (!data || data.length === 0) return "";
-    
+
     const columns = ['name', 'company', 'email', 'email_status', 'draft_status'];
     const headers = columns.join(',');
-    const rows = data.map(row => 
+    const rows = data.map(row =>
       columns.map(col => {
-        const value = row[col] || '';
+        let value = row[col];
+
+        // Default status fields if missing (critical for preventing data loss on save)
+        if ((col === 'email_status' || col === 'draft_status') && !value) {
+          value = 'Not Started';
+        }
+
+        value = value || '';
+
         // Escape commas and quotes in CSV
         if (typeof value === 'string' && (value.includes(',') || value.includes('"') || value.includes('\n'))) {
           return `"${value.replace(/"/g, '""')}"`;
@@ -77,16 +85,14 @@ function EditHrContactsPage() {
         return value;
       }).join(',')
     );
-    
+
     return [headers, ...rows].join('\n');
   };
 
   const columns = [
     { key: 'name', label: 'Name', type: 'text' },
     { key: 'company', label: 'Company', type: 'text' },
-    { key: 'email', label: 'Email', type: 'email' },
-    { key: 'email_status', label: 'Email Status', type: 'text' },
-    { key: 'draft_status', label: 'Draft Status', type: 'text' }
+    { key: 'email', label: 'Email', type: 'email' }
   ];
 
   return (
@@ -108,7 +114,8 @@ function EditHrContactsPage() {
         </div>
         <button
           onClick={() => navigate("/dashboard/hr")}
-          className="text-sm rounded bg-gray-200 px-3 py-2 hover:bg-gray-300 text-gray-900"
+          className="px-4 py-2 rounded-lg font-semibold text-sm shadow-sm transition-all text-white flex items-center gap-2"
+          style={{ background: 'linear-gradient(135deg, #6B64F2 0%, #8E5BF6 50%, #A656F7 100%)' }}
         >
           Back to Dashboard
         </button>
@@ -129,6 +136,7 @@ function EditHrContactsPage() {
           onSave={handleSave}
           onCancel={() => navigate("/dashboard/hr")}
           title="Edit HR Contact Data"
+          disableUppercase={true}
         />
       )}
     </div>

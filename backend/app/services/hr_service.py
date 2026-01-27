@@ -63,15 +63,12 @@ class HRService:
         
         # More lenient date filtering - show emails from Jan 1, 2026 onwards
         # This ensures we capture all recent emails including drafts
-        project_cutoff = datetime(2026, 1, 1)
         conversations = db.query(EmailConversation).filter(
             EmailConversation.hr_contact_id == contact_id,
-            EmailConversation.sent_at >= project_cutoff,
             EmailConversation.subject != "Test DB Persistence"
         ).order_by(EmailConversation.sent_at.asc()).all()
         
         print(f"[DEBUG] get_conversation_history: Found {len(conversations)} items in DB for contact {contact_id}")
-        print(f"[DEBUG] Date filter: showing emails from {project_cutoff} onwards")
         
         # Debug: Show all conversations without date filter to see what's in DB
         all_conversations = db.query(EmailConversation).filter(

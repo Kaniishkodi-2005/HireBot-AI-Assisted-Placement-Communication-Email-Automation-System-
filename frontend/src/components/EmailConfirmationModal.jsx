@@ -1,4 +1,5 @@
 import { useState } from "react";
+import RichTextEditor from "./RichTextEditor";
 
 function EmailConfirmationModal({ draft, contact, onClose, onSend, onBack }) {
   const [loading, setLoading] = useState(false);
@@ -52,7 +53,7 @@ function EmailConfirmationModal({ draft, contact, onClose, onSend, onBack }) {
                 type="email"
                 value={editedTo}
                 onChange={(e) => setEditedTo(e.target.value)}
-                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
               />
             </div>
             <div>
@@ -61,7 +62,7 @@ function EmailConfirmationModal({ draft, contact, onClose, onSend, onBack }) {
                 type="email"
                 value={editedFrom}
                 onChange={(e) => setEditedFrom(e.target.value)}
-                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
               />
             </div>
           </div>
@@ -72,17 +73,16 @@ function EmailConfirmationModal({ draft, contact, onClose, onSend, onBack }) {
               type="text"
               value={editedSubject}
               onChange={(e) => setEditedSubject(e.target.value)}
-              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
             />
           </div>
 
           <div>
             <label className="block text-sm font-semibold text-slate-700 mb-2">Email Content</label>
-            <textarea
+            <RichTextEditor
               value={editedContent}
-              onChange={(e) => setEditedContent(e.target.value)}
-              rows={12}
-              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+              onChange={setEditedContent}
+              className="w-full"
             />
           </div>
 
@@ -117,7 +117,8 @@ function EmailConfirmationModal({ draft, contact, onClose, onSend, onBack }) {
               <button
                 onClick={handleSend}
                 disabled={loading || !editedSubject.trim() || !editedContent.trim() || !editedTo.trim() || !editedFrom.trim()}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all font-medium flex items-center gap-2"
+                className="px-4 py-2 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all font-medium flex items-center gap-2 shadow-md hover:shadow-lg hover:opacity-90"
+                style={{ background: 'linear-gradient(135deg, #6B64F2 0%, #8E5BF6 50%, #A656F7 100%)' }}
               >
                 {loading && <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full"></div>}
                 Send Email
