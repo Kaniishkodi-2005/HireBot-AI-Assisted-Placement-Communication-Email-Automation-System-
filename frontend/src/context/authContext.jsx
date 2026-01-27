@@ -43,14 +43,9 @@ export function AuthProvider({ children }) {
   };
 
   const googleLogin = async (googleToken) => {
-    console.log("=== AUTH CONTEXT GOOGLE LOGIN ===");
     try {
-      console.log("A. Sending Google token to backend...");
-      console.log("B. Token length:", googleToken?.length);
-      
       const res = await googleLoginRequest(googleToken);
-      console.log("C. Backend response:", res);
-      
+
       const authData = {
         user: {
           email: res.email,
@@ -59,22 +54,15 @@ export function AuthProvider({ children }) {
         },
         token: res.access_token
       };
-      
-      console.log("D. Auth data created:", authData);
-      
+
       localStorage.setItem("hirebot_auth", JSON.stringify(authData));
-      console.log("E. Saved to localStorage");
-      
+
       setUser(authData.user);
       setToken(authData.token);
-      console.log("F. State updated");
-      
+
       return authData;
     } catch (error) {
-      console.error("=== AUTH CONTEXT ERROR ===");
       console.error("Error in googleLogin:", error);
-      console.error("Error message:", error.message);
-      console.error("Error response:", error.response);
       throw error;
     }
   };

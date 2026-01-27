@@ -133,14 +133,18 @@ class ReminderService:
             Reminder.status == "pending"
         ).order_by(Reminder.due_date.asc()).all()
         
-        # Auto-mark overdue reminders as fulfilled if they're more than 7 days past due
+        # Auto-mark overdue reminders as fulfilled immediately after their due date passes
         auto_fulfilled_count = 0
         for reminder in reminders[:]:
-            if reminder.due_date and reminder.due_date < (now - timedelta(days=7)):
-                reminder.status = "fulfilled"
-                reminder.updated_at = now
-                auto_fulfilled_count += 1
-                reminders.remove(reminder)
+            # Check if reminder date has passed (comparing dates, not datetime)
+            if reminder.due_date:
+                reminder_date = reminder.due_date.date()
+                current_date = now.date()
+                if reminder_date < current_date:
+                    reminder.status = "fulfilled"
+                    reminder.updated_at = now
+                    auto_fulfilled_count += 1
+                    reminders.remove(reminder)
         
         if auto_fulfilled_count > 0:
             db.commit()

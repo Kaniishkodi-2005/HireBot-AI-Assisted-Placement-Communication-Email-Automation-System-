@@ -35,6 +35,7 @@ function LoginPage() {
     setError("");
     try {
       const auth = await login(email, password);
+      console.log("Login successful, user role:", auth.user.role);
       if (auth.user.role === "admin") {
         navigate("/dashboard/admin", { replace: true });
       } else if (auth.user.role === "user") {
@@ -45,6 +46,7 @@ function LoginPage() {
       setError(errorMessage);
     }
   };
+
 
   if (loading) {
     return (
@@ -178,6 +180,7 @@ function LoginPage() {
             Sign Up
           </Link>
         </div>
+
       </div>
     </div>
   );
