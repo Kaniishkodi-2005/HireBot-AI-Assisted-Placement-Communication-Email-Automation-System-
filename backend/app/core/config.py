@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     JWT_SECRET_KEY: str = "CHANGE_ME"
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
-    GOOGLE_CLIENT_ID: str = "54602439728-atf4ekiib5l48370bvbi8rk03jk3eiid.apps.googleusercontent.com"
+    GOOGLE_CLIENT_ID: str = ""
 
 
     # Email Settings
