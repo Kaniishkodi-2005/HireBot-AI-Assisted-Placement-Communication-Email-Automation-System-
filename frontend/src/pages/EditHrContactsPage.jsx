@@ -49,7 +49,12 @@ function EditHrContactsPage() {
 
       // Navigate back after 2 seconds
       setTimeout(() => {
-        navigate("/dashboard/hr");
+        const { user } = JSON.parse(localStorage.getItem("hirebot_auth") || "{}");
+        if (user?.role === "admin") {
+          navigate("/dashboard/admin");
+        } else {
+          navigate("/dashboard/hr");
+        }
       }, 2000);
     } catch (error) {
       const errorMsg = error.response?.data?.detail || error.message || "Failed to save changes";
@@ -113,7 +118,14 @@ function EditHrContactsPage() {
           </p>
         </div>
         <button
-          onClick={() => navigate("/dashboard/hr")}
+          onClick={() => {
+            const { user } = JSON.parse(localStorage.getItem("hirebot_auth") || "{}");
+            if (user?.role === "admin") {
+              navigate("/dashboard/admin");
+            } else {
+              navigate("/dashboard/hr");
+            }
+          }}
           className="px-4 py-2 rounded-lg font-semibold text-sm shadow-sm transition-all text-white flex items-center gap-2"
           style={{ background: 'linear-gradient(135deg, #6B64F2 0%, #8E5BF6 50%, #A656F7 100%)' }}
         >
@@ -134,7 +146,14 @@ function EditHrContactsPage() {
           data={contacts}
           columns={columns}
           onSave={handleSave}
-          onCancel={() => navigate("/dashboard/hr")}
+          onCancel={() => {
+            const { user } = JSON.parse(localStorage.getItem("hirebot_auth") || "{}");
+            if (user?.role === "admin") {
+              navigate("/dashboard/admin");
+            } else {
+              navigate("/dashboard/hr");
+            }
+          }}
           title="Edit HR Contact Data"
           disableUppercase={true}
         />

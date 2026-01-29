@@ -1,19 +1,48 @@
 import { useState, useEffect, useRef } from 'react';
+import useDrivePicker from 'react-google-drive-picker';
 
-function RichTextEditor({ value, onChange, placeholder, className }) {
+// Update function signature to accept new props
+function RichTextEditor({ value, onChange, placeholder, className, isConfidential: propIsConfidential, onToggleConfidential }) {
   const editorRef = useRef(null);
   const fileInputRef = useRef(null);
-  const imageInputRef = useRef(null);
+  const colorInputRef = useRef(null);
+  const savedRange = useRef(null);
 
   // State for content and content history
+  const [initialContent] = useState(value || '');
   const [html, setHtml] = useState(value || '');
   const [history, setHistory] = useState([value || '']);
   const [historyIndex, setHistoryIndex] = useState(0);
 
   const [showFormatting, setShowFormatting] = useState(true);
   const [attachments, setAttachments] = useState([]);
-  const [isConfidential, setIsConfidential] = useState(false);
+  // Internal state fallback if not controlled
+  const [internalIsConfidential, setInternalIsConfidential] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [notification, setNotification] = useState(null);
+
+  // Determine effective state
+  const isConfidential = propIsConfidential !== undefined ? propIsConfidential : internalIsConfidential;
+  const toggleConfidential = () => {
+    const newState = !isConfidential;
+    if (onToggleConfidential) {
+      onToggleConfidential(newState);
+    } else {
+      setInternalIsConfidential(newState);
+    }
+
+    // Show notification with type
+    if (newState) {
+      setNotification({ text: "Confidential Mode Enabled", type: "success" });
+    } else {
+      setNotification({ text: "Confidential Mode Disabled", type: "neutral" });
+    }
+    setTimeout(() => setNotification(null), 3000);
+  };
+
+
+
+
 
   // Synchronize internal state if external value changes significantly
   useEffect(() => {
@@ -21,12 +50,16 @@ function RichTextEditor({ value, onChange, placeholder, className }) {
       // Only update if truly different to avoid losing cursor position or history on minor updates
       // Note: This check helps but native undo is still fragile with React updates.
       if (value !== html) {
-        setHtml(value);
-        editorRef.current.innerHTML = value;
-        // We don't push to history here to avoid loops, history is user-action driven
+        // Only update innerHTML if the editor is NOT currently focused
+        // This prevents cursor jumping when the user is actively typing
+        if (document.activeElement !== editorRef.current) {
+          setHtml(value);
+          editorRef.current.innerHTML = value;
+          // We don't push to history here to avoid loops, history is user-action driven
+        }
       }
     }
-  }, [value]);
+  }, [value, html]);
 
   // Custom History Management
   const addToHistory = (newHtml) => {
@@ -95,14 +128,44 @@ function RichTextEditor({ value, onChange, placeholder, className }) {
     }
   };
 
-  const ToolbarButton = ({ command, value, children, title }) => (
+  // --- Active State Logic ---
+  const [activeFormats, setActiveFormats] = useState({});
+
+  const checkFormats = () => {
+    if (!editorRef.current) return;
+
+    // List of commands to check
+    const commands = [
+      'bold', 'italic', 'underline', 'strikeThrough',
+      'justifyLeft', 'justifyCenter', 'justifyRight',
+      'insertUnorderedList', 'insertOrderedList'
+    ];
+
+    const newFormats = {};
+    commands.forEach(cmd => {
+      newFormats[cmd] = document.queryCommandState(cmd);
+    });
+    setActiveFormats(newFormats);
+  };
+
+  // Wrap existing input handler
+  const handleInputWithCheck = () => {
+    handleInput();
+    checkFormats();
+  };
+
+  const ToolbarButton = ({ command, value, children, title, isActive }) => (
     <button
       type="button"
       onMouseDown={(e) => {
         e.preventDefault(); // Prevent focus loss on click
         execCommand(command, value);
+        setTimeout(checkFormats, 10); // Check after command execution
       }}
-      className="p-1.5 text-gray-600 hover:bg-gray-100 rounded-[4px] transition-colors min-w-[28px] h-[28px] flex items-center justify-center cursor-pointer"
+      className={`p-1.5 rounded-[4px] transition-colors min-w-[28px] h-[28px] flex items-center justify-center cursor-pointer ${isActive
+        ? 'bg-gray-200 text-black shadow-inner'
+        : 'text-gray-600 hover:bg-gray-100'
+        }`}
       title={title}
     >
       {/* Ensure children don't block events */}
@@ -117,34 +180,53 @@ function RichTextEditor({ value, onChange, placeholder, className }) {
   );
 
   const handleLink = () => {
+    // Save current selection/range BEFORE prompt
+    const selection = window.getSelection();
+    let range = null;
+    if (selection.rangeCount > 0) {
+      range = selection.getRangeAt(0).cloneRange(); // Clone the range
+    }
+
     const url = prompt('Enter URL:');
     if (!url) return;
 
-    const selection = window.getSelection();
+    // Refocus editor first
+    if (editorRef.current) {
+      editorRef.current.focus();
+    }
+
+    // Restore selection after prompt
+    if (range) {
+      const newSelection = window.getSelection();
+      newSelection.removeAllRanges();
+      newSelection.addRange(range);
+    }
+
     if (selection.toString().length > 0) {
       execCommand('createLink', url);
     } else {
-      // If no text selected, insert the URL itself as a link
-      execCommand('insertHTML', `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`);
+      // If no text selected, insert the URL itself as a link with tooltip
+      const linkHtml = `<a href="${url}" title="Ctrl+Click to open: ${url}" target="_blank" rel="noopener noreferrer">${url}</a>&nbsp;`;
+      execCommand('insertHTML', linkHtml);
     }
   };
 
-  // --- Image Upload Logic ---
+  // --- Image URL Logic ---
   const handleImageClick = () => {
-    imageInputRef.current?.click();
-  };
+    const imageUrl = prompt('Enter image URL:');
+    if (!imageUrl) return;
 
-  const handleImageChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        execCommand('insertImage', e.target.result);
-      };
-      reader.readAsDataURL(file);
+    // Validate URL format
+    try {
+      new URL(imageUrl);
+    } catch (e) {
+      alert('⚠️ Invalid URL format!\n\nPlease enter a valid image URL (e.g., https://example.com/image.jpg)');
+      return;
     }
-    // Reset input
-    e.target.value = '';
+
+    // Insert image using URL
+    const imgHtml = `<img src="${imageUrl}" alt="Image" style="max-width: 100%; height: auto; border-radius: 4px;" /><br/>`;
+    execCommand('insertHTML', imgHtml);
   };
 
   // --- Attachment Logic ---
@@ -175,14 +257,79 @@ function RichTextEditor({ value, onChange, placeholder, className }) {
 
   // --- Signature Logic ---
   const insertSignature = () => {
-    // Basic signature template
-    const signatureHTML = `<br><br><div>--<br><strong>Best Regards,</strong><br>Placement Team<br>HireBot AI System</div>`;
+    // Updated signature template per user request
+    const signatureHTML = `<br><br><div>Best regards,<br>Placement Team<br>Bannari Amman Institute of Technology</div>`;
     execCommand('insertHTML', signatureHTML);
   };
 
-  // --- Drive (Mock) ---
+  // Add import at the top (requires another tool call, will handle next)
+  // For now, implementing the hook usage in the component body
+
+  // --- Drive (External Link) ---
+  const [openPicker] = useDrivePicker();
+
   const handleDriveClick = () => {
-    alert("Google Drive integration would open here.");
+    // Save current selection range
+    const selection = window.getSelection();
+    if (selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0);
+      // Ensure range is within editor
+      if (editorRef.current && editorRef.current.contains(range.commonAncestorContainer)) {
+        savedRange.current = range;
+      }
+    }
+
+    openPicker({
+      clientId: "54602439728-fg5ei9f8n3597jg7juc2vhhh7lnadv1n.apps.googleusercontent.com",
+      developerKey: "AIzaSyAIJOCDO-l9Fx1arCV1Tt95AzT0hwUdFW0",
+      viewId: "DOCS", // View all files
+      showUploadView: true,
+      showUploadFolders: true,
+      supportDrives: true,
+      multiselect: true,
+      callbackFunction: (data) => {
+        if (data.action === 'picked') {
+          // Use timeout to allow window to regain focus
+          setTimeout(() => {
+            // Restore selection or focus mostly for UX, but insertion will be at end
+            if (editorRef.current) {
+              editorRef.current.focus({ preventScroll: true });
+            }
+
+            data.docs.forEach(doc => {
+              // Create a nice looking drive attachment card
+              const driveHtml = `
+                <br/><div contenteditable="false" style="display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; background-color: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 8px; margin: 4px 0; user-select: none;">
+                  <a href="${doc.url}" target="_blank" rel="noopener noreferrer" style="display: flex; align-items: center; gap: 8px; text-decoration: none; color: #374151;">
+                    <img src="${doc.iconUrl || 'https://ssl.gstatic.com/images/branding/product/1x/drive_2020q4_48dp.png'}" alt="Drive" style="width: 20px; height: 20px;" />
+                    <span style="font-weight: 500; font-size: 14px; font-family: sans-serif;">${doc.name}</span>
+                  </a>
+                  <a href="${doc.url}" target="_blank" rel="noopener noreferrer" style="color: #2563eb; text-decoration: none; font-size: 18px; margin-left: 4px; display: flex; align-items: center;" title="Open Link">&#8599;</a>
+                </div><br/>
+              `;
+
+              // Always append to the end as requested
+              if (editorRef.current) {
+                // Check if we need a newline prefix
+                const content = editorRef.current.innerHTML;
+                if (!content.trim().endsWith('<br>') && !content.trim().endsWith('</div>')) {
+                  editorRef.current.innerHTML += '<br>';
+                }
+                editorRef.current.innerHTML += driveHtml;
+
+                // Trigger change
+                if (onChange) onChange(editorRef.current.innerHTML);
+
+                // Scroll to bottom
+                editorRef.current.scrollTop = editorRef.current.scrollHeight;
+              }
+            });
+
+            savedRange.current = null;
+          }, 100);
+        }
+      }
+    });
   };
 
   // --- Paste Handling (Auto-Link) ---
@@ -191,14 +338,19 @@ function RichTextEditor({ value, onChange, placeholder, className }) {
     if (!text) return; // Allow default if no text
 
     const trimmedText = text.trim();
-    // Regex to match URLs (starting with http/s or www)
-    const urlRegex = /^(https?:\/\/|www\.)[^\s/$.?#].[^\s]*$/i;
+
+    // Improved Regex to match URLs (starting with http/s or www)
+    // Matches http:// or https:// followed by non-spaces, OR www. followed by non-spaces
+    const urlRegex = /^(https?:\/\/[^\s]+|www\.[^\s]+)$/i;
 
     if (urlRegex.test(trimmedText)) {
       e.preventDefault();
 
       const selection = window.getSelection();
-      const href = trimmedText.match(/^www\./i) ? `http://${trimmedText}` : trimmedText;
+      let href = trimmedText;
+      if (!/^https?:\/\//i.test(trimmedText)) {
+        href = `http://${trimmedText}`;
+      }
 
       try {
         if (!selection.isCollapsed) {
@@ -206,7 +358,9 @@ function RichTextEditor({ value, onChange, placeholder, className }) {
           execCommand('createLink', href);
         } else {
           // Insert URL as link
-          execCommand('insertHTML', `<a href="${href}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline">${trimmedText}</a>&nbsp;`);
+          // We manually create the HTML to ensure consistent styling
+          const linkHtml = `<a href="${href}" title="Ctrl+Click to open: ${href}" target="_blank" rel="noopener noreferrer" style="color: #2563eb; text-decoration: underline;">${trimmedText}</a>&nbsp;`;
+          execCommand('insertHTML', linkHtml);
         }
       } catch (err) {
         console.error("Paste error:", err);
@@ -217,8 +371,60 @@ function RichTextEditor({ value, onChange, placeholder, className }) {
     // If not a URL, let default paste happen (do nothing here)
   };
 
+
+  // --- Color Picker Logic ---
+  const [showColorPicker, setShowColorPicker] = useState(false);
+
+  const COLOR_PALETTE = [
+    '#000000', '#434343', '#666666', '#999999', '#CCCCCC', '#EFEFEF', '#F3F3F3', '#FFFFFF',
+    '#980000', '#FF0000', '#FF9900', '#FFFF00', '#00FF00', '#00FFFF', '#4A86E8', '#0000FF',
+    '#9900FF', '#FF00FF', '#E6B8AF', '#F4CCCC', '#FCE5CD', '#FFF2CC', '#D9EAD3', '#D0E0E3',
+    '#C9DAF8', '#CFE2F3', '#D9D2E9', '#EAD1DC', '#DD7E6B', '#EA9999', '#F9CB9C', '#FFE599',
+    '#B6D7A8', '#A2C4C9', '#A4C2F4', '#9FC5E8', '#B4A7D6', '#D5A6BD', '#CC4125', '#E06666',
+    '#F6B26B', '#FFD966', '#93C47D', '#76A5AF', '#6D9EEB', '#6FA8DC', '#8E7CC3', '#C27BA0'
+  ];
+
+  // --- Key Down Logic (Fix for List Backspace) ---
+  const handleKeyDown = (e) => {
+    if (e.key === 'Backspace') {
+      const selection = window.getSelection();
+      if (selection.rangeCount > 0 && selection.isCollapsed) {
+        const range = selection.getRangeAt(0);
+        const node = range.startContainer;
+        const element = node.nodeType === 3 ? node.parentElement : node;
+        const li = element.closest('li');
+
+        if (li) {
+          // Check if cursor is at the start of the list item
+          const tempRange = range.cloneRange();
+          tempRange.selectNodeContents(li);
+          tempRange.setEnd(range.startContainer, range.startOffset);
+
+          // If the content from start to cursor is empty, we are at the beginning
+          if (tempRange.toString().length === 0) {
+            e.preventDefault();
+            execCommand('outdent');
+          }
+        }
+      }
+    }
+  };
+
+  const handleEditorClick = (e) => {
+    if (e.target.tagName === 'A' || e.target.closest('a')) {
+      // Allow navigation only if Ctrl or Meta (Cmd) key is pressed
+      if (e.ctrlKey || e.metaKey) {
+        return;
+      }
+      // Otherwise prevent default navigation to allow editing
+      e.preventDefault();
+    }
+  };
+
   return (
-    <div className={`border border-gray-200 rounded-lg overflow-hidden bg-white shadow-sm flex flex-col ${className}`}>
+    <div className={`relative border border-gray-200 rounded-lg overflow-hidden bg-white shadow-sm flex flex-col ${className}`}>
+
+      {/* Top Formatting Toolbar (Toggled by Aa) */}
 
       {/* Top Formatting Toolbar (Toggled by Aa) */}
       {showFormatting && (
@@ -251,39 +457,72 @@ function RichTextEditor({ value, onChange, placeholder, className }) {
           <ToolbarDivider />
 
           {/* Basic Formatting */}
-          <ToolbarButton command="bold" title="Bold (Ctrl+B)">
+          <ToolbarButton command="bold" title="Bold (Ctrl+B)" isActive={activeFormats['bold']}>
             <span className="font-bold font-serif text-base">B</span>
           </ToolbarButton>
-          <ToolbarButton command="italic" title="Italic (Ctrl+I)">
+          <ToolbarButton command="italic" title="Italic (Ctrl+I)" isActive={activeFormats['italic']}>
             <span className="italic font-serif text-base">I</span>
           </ToolbarButton>
-          <ToolbarButton command="underline" title="Underline (Ctrl+U)">
+          <ToolbarButton command="underline" title="Underline (Ctrl+U)" isActive={activeFormats['underline']}>
             <span className="underline font-serif text-base">U</span>
           </ToolbarButton>
-          <ToolbarButton command="foreColor" value="#1a73e8" title="Text Color (Blue)">
-            <div className="flex flex-col items-center justify-center">
-              <span className="font-bold text-sm leading-none">A</span>
-              <span className="w-4 h-1 bg-black mt-0.5"></span>
-            </div>
+
+          {/* Custom Color Picker Button */}
+          <div className="relative">
+            <button
+              type="button"
+              className="p-1.5 text-gray-600 hover:bg-gray-100 rounded-[4px] transition-colors min-w-[28px] h-[28px] flex items-center justify-center cursor-pointer"
+              title="Text Color"
+              onClick={() => setShowColorPicker(!showColorPicker)}
+              onMouseDown={(e) => e.preventDefault()}
+            >
+              <div className="flex flex-col items-center justify-center w-full h-full">
+                <span className="font-bold text-sm leading-none">A</span>
+                <span className="w-4 h-1 bg-gradient-to-r from-red-500 via-green-500 to-blue-500 mt-0.5"></span>
+              </div>
+            </button>
+
+            {showColorPicker && (
+              <div className="absolute top-full left-0 mt-1 p-2 bg-white border border-gray-200 shadow-xl grid grid-cols-8 gap-1 z-50 w-64 rounded-lg">
+                {COLOR_PALETTE.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    style={{ backgroundColor: c }}
+                    onClick={() => {
+                      execCommand('foreColor', c);
+                      setShowColorPicker(false);
+                    }}
+                    className="w-6 h-6 rounded-full hover:ring-2 hover:ring-offset-1 hover:ring-gray-400 border border-gray-100"
+                    title={c}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Strikethrough */}
+          <ToolbarButton command="strikeThrough" title="Strikethrough" isActive={activeFormats['strikeThrough']}>
+            <span className="line-through font-serif text-base">S</span>
           </ToolbarButton>
 
           <ToolbarDivider />
 
           {/* Alignment */}
-          <ToolbarButton command="justifyLeft" title="Align Left">
+          <ToolbarButton command="justifyLeft" title="Align Left" isActive={activeFormats['justifyLeft']}>
             <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="15" y2="12" /><line x1="3" y1="18" x2="18" y2="18" /></svg>
           </ToolbarButton>
-          <ToolbarButton command="justifyCenter" title="Align Center">
+          <ToolbarButton command="justifyCenter" title="Align Center" isActive={activeFormats['justifyCenter']}>
             <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="6" x2="21" y2="6" /><line x1="6" y1="12" x2="18" y2="12" /><line x1="6" y1="18" x2="18" y2="18" /></svg>
           </ToolbarButton>
-          <ToolbarButton command="justifyRight" title="Align Right">
+          <ToolbarButton command="justifyRight" title="Align Right" isActive={activeFormats['justifyRight']}>
             <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="6" x2="21" y2="6" /><line x1="9" y1="12" x2="21" y2="12" /><line x1="6" y1="18" x2="21" y2="18" /></svg>
           </ToolbarButton>
 
           <ToolbarDivider />
 
           {/* Lists */}
-          <ToolbarButton command="insertUnorderedList" title="Bullet List">
+          <ToolbarButton command="insertUnorderedList" title="Bullet List" isActive={activeFormats['insertUnorderedList']}>
             <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
               <circle cx="5" cy="7" r="2" />
               <rect x="10" y="6" width="10" height="2" rx="1" />
@@ -293,7 +532,7 @@ function RichTextEditor({ value, onChange, placeholder, className }) {
               <rect x="10" y="16" width="10" height="2" rx="1" />
             </svg>
           </ToolbarButton>
-          <ToolbarButton command="insertOrderedList" title="Numbered List">
+          <ToolbarButton command="insertOrderedList" title="Numbered List" isActive={activeFormats['insertOrderedList']}>
             <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
               <path d="M4 6h2v-2h-1v-1h3v3h-2v9h4v2h-6v-2h2v-9zM10 6h10v2h-10v-2zM10 11h10v2h-10v-2zM10 16h10v2h-10v-2z" />
               <text x="3" y="17" fontSize="14" fontWeight="bold" fontFamily="sans-serif">1</text>
@@ -305,10 +544,7 @@ function RichTextEditor({ value, onChange, placeholder, className }) {
 
           <ToolbarDivider />
 
-          {/* Strikethrough Only (Quote Removed) */}
-          <ToolbarButton command="strikeThrough" title="Strikethrough">
-            <span className="line-through font-serif text-base">S</span>
-          </ToolbarButton>
+          {/* Strikethrough Moved */}
 
         </div>
       )}
@@ -317,10 +553,18 @@ function RichTextEditor({ value, onChange, placeholder, className }) {
       <div
         ref={editorRef}
         contentEditable
-        className="flex-1 p-4 outline-none text-sm text-gray-800 leading-relaxed overflow-y-auto"
-        onInput={handleInput}
+        className="flex-1 p-4 outline-none text-sm text-gray-800 leading-relaxed overflow-y-auto [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_a]:text-blue-600 [&_a]:underline"
+        onInput={handleInputWithCheck}
+        onKeyDown={(e) => {
+          handleKeyDown(e);
+          setTimeout(checkFormats, 10);
+        }}
+        onKeyUp={checkFormats}
+        onMouseUp={checkFormats}
+        onClick={handleEditorClick}
+
         onPaste={handlePaste}
-        dangerouslySetInnerHTML={{ __html: value }}
+        dangerouslySetInnerHTML={{ __html: initialContent }}
         style={{ minHeight: '300px' }}
       >
       </div>
@@ -361,6 +605,21 @@ function RichTextEditor({ value, onChange, placeholder, className }) {
 
       {/* Bottom Action Bar */}
       <div className="relative flex items-center gap-2 p-2 px-3 border-t border-gray-100 bg-gray-50">
+
+        {/* Notification Toast (Bottom Center - Professional Blue) */}
+        {notification && (
+          <div
+            className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-3 px-4 py-2 rounded-lg shadow-xl z-[100] flex items-center gap-3 transition-all duration-300 ease-out border bg-blue-600 text-white border-blue-500 animate-fade-in-up"
+          >
+            {notification.type === 'success' ? (
+              <svg className="w-5 h-5 text-blue-100" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /><path d="M12 16v.01" /></svg>
+            ) : (
+              <svg className="w-5 h-5 text-blue-100" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 9.9-1" /></svg>
+            )}
+            <span className="font-medium text-sm tracking-wide">{notification.text}</span>
+          </div>
+        )}
+
         {/* Aa - Toggle Formatting */}
         <button
           onClick={() => setShowFormatting(!showFormatting)}
@@ -419,13 +678,12 @@ function RichTextEditor({ value, onChange, placeholder, className }) {
         >
           <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" /></svg>
         </button>
-        <input type="file" ref={imageInputRef} className="hidden" accept="image/*" onChange={handleImageChange} />
 
         {/* Confidential */}
         <button
           className={`p-2 rounded-full transition-colors ${isConfidential ? 'bg-blue-100 text-blue-600' : 'text-gray-600 hover:bg-gray-200'}`}
           title="Toggle confidential mode"
-          onMouseDown={(e) => { e.preventDefault(); setIsConfidential(!isConfidential); }}
+          onMouseDown={(e) => { e.preventDefault(); toggleConfidential(); }}
         >
           <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /><circle cx="12" cy="16" r="1" /></svg>
         </button>

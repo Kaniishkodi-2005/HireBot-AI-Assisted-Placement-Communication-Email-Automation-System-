@@ -7,7 +7,7 @@ class Reminder(Base):
     __tablename__ = "reminders"
 
     id = Column(Integer, primary_key=True, index=True)
-    contact_id = Column(Integer, ForeignKey("hr_contacts.id"), nullable=False)
+    contact_id = Column(Integer, ForeignKey("hr_contacts.id", ondelete="CASCADE"), nullable=False)
     description = Column(String(500), nullable=False)
     status = Column(String(50), default="pending")  # pending, fulfilled
     priority = Column(String(20), default="medium")
@@ -32,7 +32,12 @@ class Reminder(Base):
 
     @property
     def deadline_text(self):
-        # Prefer the actual date if the stored string is just "Upcoming"
+        # Handle vague dates gracefully
+        vague_terms = ["upcoming", "shortly", "soon"]
+        if self.due_date_str and any(term in self.due_date_str.lower() for term in vague_terms):
+             return "Upcoming (Date not mentioned)"
+        
+        # Fallback to standard logic
         if self.due_date_str and self.due_date_str.lower() != "upcoming":
              return self.due_date_str
         if self.due_date:

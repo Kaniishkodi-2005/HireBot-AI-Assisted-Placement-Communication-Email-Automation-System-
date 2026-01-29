@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import RichTextEditor from "./RichTextEditor";
 
 function EmailConfirmationModal({ draft, contact, onClose, onSend, onBack }) {
@@ -7,6 +7,25 @@ function EmailConfirmationModal({ draft, contact, onClose, onSend, onBack }) {
   const [editedSubject, setEditedSubject] = useState(draft?.subject || "");
   const [editedTo, setEditedTo] = useState(contact?.email || draft?.to || draft?.recipient_email || "");
   const [editedFrom, setEditedFrom] = useState("bitplacement28@gmail.com");
+  const [isConfidential, setIsConfidential] = useState(false);
+  const [confidentialSettings, setConfidentialSettings] = useState({
+    expiry_days: 7,
+    disable_forwarding: true,
+    disable_copying: true,
+    disable_downloading: true,
+    disable_printing: true,
+    require_otp: true
+  });
+
+  // Lock body scroll when modal is open
+  useEffect(() => {
+    // Scroll to top first to ensure modal is visible
+    window.scrollTo(0, 0);
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, []);
 
   const handleSend = async () => {
     setLoading(true);
@@ -16,7 +35,9 @@ function EmailConfirmationModal({ draft, contact, onClose, onSend, onBack }) {
         subject: editedSubject,
         content: editedContent,
         to: editedTo,
-        from: editedFrom
+        from: editedFrom,
+        is_confidential: isConfidential,
+        ...confidentialSettings
       });
     } catch (error) {
       console.error("Failed to send email:", error);
@@ -28,8 +49,8 @@ function EmailConfirmationModal({ draft, contact, onClose, onSend, onBack }) {
   if (!draft) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-xl">
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 overflow-hidden">
+      <div className="bg-white rounded-xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-xl relative">
         <div className="p-6 border-b border-slate-200">
           <div className="flex items-center justify-between">
             <div>
@@ -83,8 +104,92 @@ function EmailConfirmationModal({ draft, contact, onClose, onSend, onBack }) {
               value={editedContent}
               onChange={setEditedContent}
               className="w-full"
+              isConfidential={isConfidential}
+              onToggleConfidential={setIsConfidential}
             />
           </div>
+
+          {/* Confidential Mode Settings Panel */}
+          {isConfidential && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-5 space-y-4 animate-fade-in text-blue-900 shadow-sm">
+              <div className="flex items-center justify-between border-b border-blue-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 bg-blue-600 rounded-lg text-white">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold">Confidential Mode Configuration</h4>
+                    <p className="text-[10px] text-blue-600 uppercase tracking-wider font-semibold">Maximum Privacy Enabled</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-x-8 gap-y-4">
+                {/* Expiry Setting */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold flex items-center gap-1.5">
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} /></svg>
+                    Content Expiration
+                  </label>
+                  <select
+                    value={confidentialSettings.expiry_days}
+                    onChange={(e) => setConfidentialSettings(prev => ({ ...prev, expiry_days: parseInt(e.target.value) }))}
+                    className="w-full bg-white border border-blue-200 rounded-md px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-400"
+                  >
+                    <option value={1}>Expires in 1 Day</option>
+                    <option value={7}>Expires in 7 Days (Default)</option>
+                    <option value={30}>Expires in 30 Days</option>
+                    <option value={90}>Expires in 3 Months</option>
+                  </select>
+                </div>
+
+                {/* OTP Requirement */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={confidentialSettings.require_otp}
+                      onChange={(e) => setConfidentialSettings(prev => ({ ...prev, require_otp: e.target.checked }))}
+                      className="w-4 h-4 rounded border-blue-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} /></svg>
+                    Require OTP (Verification)
+                  </label>
+                  <p className="text-[10px] text-blue-600 pl-5 leading-tight">Recipient must enter a code sent via backend to view content.</p>
+                </div>
+
+                {/* Restricted Actions */}
+                <div className="col-span-2 space-y-3 pt-2">
+                  <p className="text-[10px] font-bold text-blue-700 uppercase tracking-widest border-b border-blue-100 pb-1">Forbidden Actions</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    {[
+                      { key: 'disable_forwarding', label: 'No Forwarding', icon: 'M10 19l-7-7m0 0l7-7m-7 7h18' },
+                      { key: 'disable_copying', label: 'No Copying', icon: 'M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3' },
+                      { key: 'disable_downloading', label: 'No Downloading', icon: 'M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4' },
+                      { key: 'disable_printing', label: 'No Printing', icon: 'M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z' }
+                    ].map(action => (
+                      <label key={action.key} className="flex items-center gap-2 group cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={confidentialSettings[action.key]}
+                          onChange={(e) => setConfidentialSettings(prev => ({ ...prev, [action.key]: e.target.checked }))}
+                          className="w-4 h-4 rounded border-blue-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <div className="flex items-center gap-1.5">
+                          <svg className="w-3.5 h-3.5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={action.icon} />
+                          </svg>
+                          <span className="text-xs font-semibold group-hover:text-blue-700 transition-colors">{action.label}</span>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
             <div className="flex items-start gap-2">

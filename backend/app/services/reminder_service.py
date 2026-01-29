@@ -14,8 +14,8 @@ class ReminderService:
             
         try:
             # Handle "Upcoming" string (legacy support)
-            if date_str.lower() == "upcoming":
-                return datetime.now() + timedelta(days=1)  # Default to tomorrow
+            if date_str.lower() in ["upcoming", "shortly", "soon"]:
+                return datetime.now() + timedelta(days=7)  # Default to next week to avoid "Today" panic
 
             # Try parsing exact formats first
             formats = [
@@ -64,7 +64,7 @@ class ReminderService:
             
         except Exception as e:
             print(f"Date parsing error for {date_str}: {e}")
-            return datetime.now() + timedelta(days=1)
+            return datetime.now() + timedelta(days=7) # Default to next week for unknown dates
 
     @staticmethod
     def create_reminder(db: Session, data: ReminderCreate) -> Reminder:
@@ -72,41 +72,56 @@ class ReminderService:
         
         # Check duplicate - normalize description for comparison
         search_desc = data.description.replace(" (Auto-detected)", "").strip().lower()
-        is_visit = "visit" in search_desc
+        is_visit = "visit" in search_desc or "campus" in search_desc
         
-        existing = db.query(Reminder).filter(
-            Reminder.contact_id == data.contact_id,
-            Reminder.status == "pending"
-        ).all()
+        # Get target contact identity
+        from app.models.hr_contact_model import HRContact
+        target_contact = db.query(HRContact).filter(HRContact.id == data.contact_id).first()
+        
+        # AGGRESSIVE: Look for existing reminders for the same IDENTITY (Company + Name)
+        # This fixes duplicates when the same HR is in the system with multiple emails
+        existing = []
+        if target_contact:
+            existing = db.query(Reminder).join(HRContact).filter(
+                HRContact.company == target_contact.company,
+                HRContact.name == target_contact.name,
+                Reminder.status == "pending"
+            ).all()
+        else:
+            # Fallback to ID only if contact not found
+            existing = db.query(Reminder).filter(
+                Reminder.contact_id == data.contact_id,
+                Reminder.status == "pending"
+            ).all()
         
         for rem in existing:
-            rem_desc = rem.description.replace(" (Auto-detected)", "").strip().lower()
+            rem_desc = (rem.description or "").lower()
             
-            # 1. Exact description match (ignoring auto-detected suffix)
-            if rem_desc == search_desc:
-                print(f"[DUPLICATE] Exact match found for '{search_desc}' - returning existing reminder {rem.id}")
-                return rem
+            # Exact description match or both are visit-related
+            is_duplicate = (rem_desc == search_desc) or (is_visit and ("visit" in rem_desc or "campus" in rem_desc))
+            
+            if is_duplicate:
+                print(f"[RE-SYNC] Updating existing reminder {rem.id} for identity {target_contact.company if target_contact else data.contact_id}")
+                # Update with latest information
+                rem.due_date = parsed_date
+                rem.due_date_str = data.due_date
+                # If new description is more descriptive, update it
+                if len(data.description) > len(rem.description or ""):
+                    rem.description = data.description
                 
-            # 2. Aggressive Consolidation: If this is a Visit and they already have a Visit
-            # we block it to prevent clutter. 1 Visit per contact is usually enough.
-            if is_visit and "visit" in rem_desc:
-                print(f"[CONSOLIDATE] Blocking new visit reminder for contact {data.contact_id} because one already exists (ID: {rem.id}).")
+                db.commit()
+                db.refresh(rem)
                 return rem
-            
-            # 3. Same contact + same date consolidation
-            if rem.due_date and parsed_date:
-                # If dates are within 1 day of each other, consider it duplicate
-                date_diff = abs((rem.due_date - parsed_date).days)
-                if date_diff <= 1 and (is_visit or "visit" in rem_desc):
-                    print(f"[DATE_CONSOLIDATE] Visit reminders within 1 day - returning existing reminder {rem.id}")
-                    return rem
-            
+        
+        # Create new if no duplicate found
+        print(f"[NEW] Creating reminder for contact {data.contact_id}: {data.description}")
         reminder = Reminder(
             contact_id=data.contact_id,
             description=data.description,
-            priority=data.priority,
             due_date_str=data.due_date,
-            due_date=parsed_date
+            due_date=parsed_date,
+            priority=data.priority,
+            status="pending"
         )
         db.add(reminder)
         db.commit()
@@ -154,27 +169,55 @@ class ReminderService:
     
     @staticmethod
     def _cleanup_duplicates(db: Session, reminders):
-        """Remove duplicate reminders based on contact_id, description, and date"""
-        seen = set()
+        """Remove duplicate reminders based on contact identity, description, and date"""
+        seen_keys = set()
+        seen_visits = {} # (company, name) -> [dates]
         duplicates_to_remove = []
         
         for reminder in reminders:
-            # Create a key for deduplication
-            desc_normalized = reminder.description.replace(" (Auto-detected)", "").strip().lower()
-            date_key = reminder.due_date.date() if reminder.due_date else "no_date"
-            key = (reminder.contact_id, desc_normalized, date_key)
+            contact = reminder.contact
+            if not contact: continue
             
-            if key in seen:
+            # Identity key: (Company, Name)
+            identity = (contact.company.lower().strip(), contact.name.lower().strip())
+            
+            desc_norm = (reminder.description or "").lower().strip()
+            is_visit = "visit" in desc_norm or "campus" in desc_norm
+            date_val = reminder.due_date.date() if reminder.due_date else None
+            
+            # Special logic for visits: match by identity + date closeness
+            if is_visit and date_val:
+                if identity not in seen_visits:
+                    seen_visits[identity] = []
+                
+                is_dup = False
+                for existing_date in seen_visits[identity]:
+                    if abs((existing_date - date_val).days) <= 1:
+                        is_dup = True
+                        break
+                
+                if is_dup:
+                    duplicates_to_remove.append(reminder.id)
+                    continue
+                else:
+                    seen_visits[identity].append(date_val)
+            
+            # Standard logic balance (Identity-based)
+            desc_dedup = desc_norm.replace(" (auto-detected)", "").strip()
+            key = (identity, desc_dedup, date_val)
+            
+            if key in seen_keys:
                 duplicates_to_remove.append(reminder.id)
-                print(f"[CLEANUP] Marking duplicate reminder {reminder.id} for removal: {desc_normalized}")
             else:
-                seen.add(key)
+                seen_keys.add(key)
         
         # Remove duplicates
         if duplicates_to_remove:
+            print(f"[CLEANUP] Removing {len(duplicates_to_remove)} duplicate reminders across identities")
             db.query(Reminder).filter(Reminder.id.in_(duplicates_to_remove)).delete(synchronize_session=False)
             db.commit()
-            print(f"[CLEANUP] Removed {len(duplicates_to_remove)} duplicate reminders")
+            return True
+        return False
     
     @staticmethod
     def mark_fulfilled(db: Session, reminder_id: int):

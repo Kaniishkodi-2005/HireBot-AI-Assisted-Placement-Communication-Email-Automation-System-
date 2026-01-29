@@ -67,7 +67,7 @@ Extract and return JSON with these fields:
   "skills": ["skill1", "skill2"] or [],
   "positions_count": number or null,
   "deadline": "date string or null",
-  "visit_date": "date string or null",
+  "visit_date": "date string (use 'Upcoming' if mentioned without specific date) or null",
   "commitments": ["commitment1"] or [],
   "action_items": ["action1"] or [],
   "urgency": "low" or "medium" or "high"
@@ -217,8 +217,10 @@ Return ONLY the JSON object, no other text."""
         
         # Detect commitments
         commitments = []
-        if 'will visit' in hr_lower or 'planning to visit' in hr_lower or 'visiting' in hr_lower:
+        if 'will visit' in hr_lower or 'planning to visit' in hr_lower or 'visiting' in hr_lower or 'visit shortly' in hr_lower:
             commitments.append("Campus visit planned")
+            if not visit_date:
+                visit_date = "Upcoming"
         if 'will schedule' in hr_lower or 'will arrange' in hr_lower or 'reach out' in hr_lower:
             commitments.append("Follow-up communication")
         
@@ -402,31 +404,41 @@ Return ONLY this JSON:
         Extract only the latest message from an email thread.
         Removes quoted replies (lines starting with >, or content after 'On ... wrote:')
         """
-        # Split by common email thread markers
-        thread_markers = [
-            '\nOn ',  # "On Mon, Jan 19, 2026 at 2:52 PM"
-            '\n\nOn ',
-            '\n> ',  # Quoted text
-            '\nFrom:',  # Email headers
-            '\n-----Original Message-----',
+        if not email_content:
+            return ""
+
+        # Normalize line endings
+        content = email_content.replace('\r\n', '\n').replace('\r', '\n')
+        lines = content.split('\n')
+        clean_lines = []
+        
+        # Regex patterns for thread separators
+        separator_patterns = [
+            r'^\s*On\s+.*wrote:\s*$',  # Gmail style: On Mon, Jan 1... wrote:
+            r'^\s*From:\s+.*$',        # Outlook/Standard: From: Sender Name
+            r'^\s*-{3,}\s?Original Message\s?-{3,}\s*$', # -----Original Message-----
+            r'^\s*________________________________\s*$'   # Underscore separator
         ]
         
-        # Find the earliest thread marker
-        earliest_pos = len(email_content)
-        for marker in thread_markers:
-            pos = email_content.find(marker)
-            if pos != -1 and pos < earliest_pos:
-                earliest_pos = pos
+        for line in lines:
+            # Check for thread separators
+            is_separator = False
+            for pattern in separator_patterns:
+                if re.match(pattern, line, re.IGNORECASE):
+                    is_separator = True
+                    break
+            
+            if is_separator:
+                break  # Stop processing at the first sign of a thread history
+            
+            # Skip quoted lines (common in replies)
+            if line.strip().startswith('>'):
+                continue
+                
+            clean_lines.append(line)
         
-        # Extract only the content before the thread marker
-        latest_message = email_content[:earliest_pos].strip()
-        
-        # Also remove lines that start with '>'
-        lines = latest_message.split('\n')
-        clean_lines = [line for line in lines if not line.strip().startswith('>')]
-        latest_message = '\n'.join(clean_lines).strip()
-        
-        return latest_message
+        # Rejoin and strip
+        return '\n'.join(clean_lines).strip()
     
     @staticmethod
     def generate_draft_reply(hr_message: str, company: str, contact_name: Optional[str] = None, students_data: Optional[List[Dict]] = None) -> Dict:
@@ -641,7 +653,7 @@ Placement Team"""
         
         # Generate follow-up actions
         follow_up_actions = []
-        if intent.get('visit_date'):
+        if intent.get('visit_date') and ('Campus visit planned' in intent.get('commitments', []) or any(k in clean_message.lower() for k in ['visit', 'schedule', 'campus', 'interview'])):
             # Extract requirements for meaningful reminder description
             from app.utils.student_requirements import extract_student_requirements
             requirements = extract_student_requirements(clean_message)

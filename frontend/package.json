@@ -13,6 +13,7 @@
     "axios": "^1.7.9",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-google-drive-picker": "^1.2.2",
     "react-router-dom": "^6.28.0"
   },
   "devDependencies": {
@@ -23,10 +24,3 @@
     "vite": "^6.0.2"
   }
 }
-
-
-
-
-
-
-

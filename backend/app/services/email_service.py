@@ -66,7 +66,11 @@ class EmailService:
             if cc:
                 msg['Cc'] = ', '.join(cc)
             
-            msg.attach(MIMEText(body, 'plain'))
+            msg.attach(MIMEText(body, 'html'))
+            
+            from email.utils import make_msgid
+            message_id = make_msgid()
+            msg['Message-ID'] = message_id
             
             if attachments:
                 for file_path in attachments:
@@ -90,14 +94,14 @@ class EmailService:
                 print(f"[EMAIL] ✓ Email sent successfully to {to_email}")
                 log_debug("Email sent successfully")
             
-            return True
+            return True, message_id
             
         except Exception as e:
             log_debug(f"EXCEPTION: {str(e)}")
             import traceback
             log_debug(traceback.format_exc())
             print(f"[EMAIL ERROR] Failed to send email: {str(e)}")
-            return False
+            return False, None
     
     @staticmethod
     def _attach_file(msg: MIMEMultipart, file_path: str):
@@ -126,8 +130,8 @@ class EmailService:
         return re.match(pattern, email) is not None
 
     @staticmethod
-    def fetch_replies(known_emails: List[str], target_email: Optional[str] = None) -> List[Dict[str, Any]]:
-        """Fetch emails from inbox and sent folder"""
+    def fetch_replies(known_emails: List[str], target_email: Optional[str] = None, lookback_days: int = 7) -> List[Dict[str, Any]]:
+        """Fetch emails from inbox and sent folder optimized for speed"""
         replies = []
         
         EMAIL_USER = settings.EMAIL_USER
@@ -137,6 +141,10 @@ class EmailService:
         if not EMAIL_USER or not EMAIL_PASS:
             print("[ERROR] Email credentials not found")
             return []
+
+        # Calculate search date based on lookback_days
+        from datetime import timedelta
+        search_date = (datetime.utcnow() - timedelta(days=lookback_days)).strftime("%d-%b-%Y")
 
         # Helper to parse email date to UTC
         def parse_email_date(date_str):
@@ -182,6 +190,38 @@ class EmailService:
                 print(f"[DEBUG] Decode Header Error: {e}")
                 return s
 
+        # Helper to process body and extract BASE64 images for CID
+        def process_body_attachments(msg, html_content):
+            if not html_content:
+                return html_content
+            
+            import base64
+            import re
+            
+            # Find all image parts with Content-ID
+            cid_mapping = {}
+            for part in msg.walk():
+                content_type = part.get_content_type()
+                cid = part.get('Content-ID')
+                if content_type.startswith('image/') and cid:
+                    cid = cid.strip('<>')
+                    try:
+                        payload = part.get_payload(decode=True)
+                        if payload:
+                            ext = part.get_content_subtype() or 'png'
+                            b64 = base64.b64encode(payload).decode('utf-8')
+                            cid_mapping[cid] = f"data:image/{ext};base64,{b64}"
+                    except Exception as e:
+                        print(f"[DEBUG] Image decode error for CID {cid}: {e}")
+            
+            # Replace cid: references in HTML
+            if cid_mapping:
+                for cid, b64_src in cid_mapping.items():
+                    # We use replace for exact matches, handles both single and double quotes
+                    html_content = html_content.replace(f'cid:{cid}', b64_src)
+            
+            return html_content
+
         mail = None
         try:
             print(f"[IMAP] Connecting to {IMAP_HOST} for {EMAIL_USER}...")
@@ -189,14 +229,12 @@ class EmailService:
             mail.login(EMAIL_USER, EMAIL_PASS)
             
             known_emails_lower = [e.lower().strip() for e in known_emails if e]
-            cutoff_date = "12-Jan-2026"
-
             # 1. Fetch RECEIVED emails from INBOX
             try:
                 mail.select("INBOX")
-                search_query = f'SINCE {cutoff_date}'
+                search_query = f'SINCE {search_date}'
                 if target_email:
-                    search_query = f'FROM "{target_email}" SINCE {cutoff_date}'
+                    search_query = f'FROM "{target_email}" SINCE {search_date}'
                     
                 print(f"[IMAP] Searching INBOX with query: {search_query}")
                 status, messages = mail.search(None, search_query)
@@ -204,7 +242,9 @@ class EmailService:
                 if status == 'OK' and messages[0]:
                     email_ids = messages[0].split()
                     print(f"[IMAP] Processing {len(email_ids)} inbox emails...")
-                    for email_id in email_ids[-50:]:
+                    # For bulk fetch, we only care about very recent ones to keep it fast
+                    process_limit = 20 if not target_email else 50
+                    for email_id in email_ids[-process_limit:]:
                         try:
                             status, data = mail.fetch(email_id, '(RFC822)')
                             if status == 'OK' and data[0]:
@@ -219,20 +259,35 @@ class EmailService:
                                     parsed_dt = parse_email_date(date_str)
                                     
                                     body = ""
+                                    html_body = None
+                                    plain_body = None
+                                    
                                     if msg.is_multipart():
                                         for part in msg.walk():
-                                            if part.get_content_type() == "text/plain":
+                                            content_type = part.get_content_type()
+                                            if content_type == "text/html":
                                                 try:
                                                     payload = part.get_payload(decode=True)
                                                     if payload:
-                                                        body = payload.decode('utf-8', errors='ignore')
-                                                        break
+                                                        html_body = payload.decode('utf-8', errors='ignore')
                                                 except: continue
+                                            elif content_type == "text/plain":
+                                                try:
+                                                    payload = part.get_payload(decode=True)
+                                                    if payload:
+                                                        plain_body = payload.decode('utf-8', errors='ignore')
+                                                except: continue
+                                        # Prioritize HTML over plain text
+                                        body = html_body if html_body else plain_body
+                                        body = process_body_attachments(msg, body)
                                     else:
                                         try:
                                             payload = msg.get_payload(decode=True)
-                                            if payload: body = payload.decode('utf-8', errors='ignore')
-                                        except: body = str(msg.get_payload())
+                                            if payload: 
+                                                body = payload.decode('utf-8', errors='ignore')
+                                                body = process_body_attachments(msg, body)
+                                        except: 
+                                            body = str(msg.get_payload())
                                     
                                     if not message_id:
                                         message_id = generate_message_hash(from_header, subject, date_str, body)
@@ -275,9 +330,9 @@ class EmailService:
                 print(f"[IMAP] Attempting to select sent folder: {sent_folder}")
                 status, _ = mail.select(sent_folder)
                 if status == 'OK':
-                    search_query = f'SINCE {cutoff_date}'
+                    search_query = f'SINCE {search_date}'
                     if target_email:
-                        search_query = f'TO "{target_email}" SINCE {cutoff_date}'
+                        search_query = f'TO "{target_email}" SINCE {search_date}'
                         
                     print(f"[IMAP] Searching SENT with query: {search_query}")
                     status, messages = mail.search(None, search_query)
@@ -285,7 +340,9 @@ class EmailService:
                     if status == 'OK' and messages[0]:
                         sent_ids = messages[0].split()
                         print(f"[IMAP] Processing {len(sent_ids)} sent emails...")
-                        for email_id in sent_ids[-50:]:
+                        # For bulk fetch, we only care about very recent ones to keep it fast
+                        process_limit = 20 if not target_email else 50
+                        for email_id in sent_ids[-process_limit:]:
                             try:
                                 status, data = mail.fetch(email_id, '(RFC822)')
                                 if status == 'OK' and data[0]:
@@ -300,20 +357,35 @@ class EmailService:
                                         parsed_dt = parse_email_date(date_str)
                                         
                                         body = ""
+                                        html_body = None
+                                        plain_body = None
+                                        
                                         if msg.is_multipart():
                                             for part in msg.walk():
-                                                if part.get_content_type() == "text/plain":
+                                                content_type = part.get_content_type()
+                                                if content_type == "text/html":
                                                     try:
                                                         payload = part.get_payload(decode=True)
                                                         if payload:
-                                                            body = payload.decode('utf-8', errors='ignore')
-                                                            break
+                                                            html_body = payload.decode('utf-8', errors='ignore')
                                                     except: continue
+                                                elif content_type == "text/plain":
+                                                    try:
+                                                        payload = part.get_payload(decode=True)
+                                                        if payload:
+                                                            plain_body = payload.decode('utf-8', errors='ignore')
+                                                    except: continue
+                                            # Prioritize HTML over plain text
+                                            body = html_body if html_body else plain_body
+                                            body = process_body_attachments(msg, body)
                                         else:
                                             try:
                                                 payload = msg.get_payload(decode=True)
-                                                if payload: body = payload.decode('utf-8', errors='ignore')
-                                            except: body = str(msg.get_payload())
+                                                if payload: 
+                                                    body = payload.decode('utf-8', errors='ignore')
+                                                    body = process_body_attachments(msg, body)
+                                            except: 
+                                                body = str(msg.get_payload())
                                         
                                         sender_header = decode_mime_header(msg.get("From", ""))
                                         if not message_id:
@@ -321,7 +393,8 @@ class EmailService:
 
                                         if body and body.strip():
                                             replies.append({
-                                                "subject": subject, "body": body.strip(), "from": sender_header,
+                                                "subject": subject, "body": body.strip(), 
+                                                "from": sender_header, "to": recipient_email,
                                                 "timestamp": date_str, "parsed_timestamp": parsed_dt,
                                                 "message_id": message_id, "direction": "sent"
                                             })

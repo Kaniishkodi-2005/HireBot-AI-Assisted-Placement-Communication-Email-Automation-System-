@@ -1,4 +1,5 @@
 import { useState } from "react";
+import RichTextEditor from "./RichTextEditor";
 
 function CreateTemplateModal({ onClose, onSave }) {
   const [templateName, setTemplateName] = useState("");
@@ -68,12 +69,10 @@ function CreateTemplateModal({ onClose, onSave }) {
 
           <div>
             <label className="block text-sm font-semibold text-slate-700 mb-2">Email Body</label>
-            <textarea
+            <RichTextEditor
               value={body}
-              onChange={(e) => setBody(e.target.value)}
-              rows={12}
-              placeholder="Write your email template here. You can use placeholders like {company_name}, {contact_name}, etc."
-              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+              onChange={setBody}
+              placeholder="Write your email template here. Use formatting tools for rich content."
             />
           </div>
 

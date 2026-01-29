@@ -11,13 +11,17 @@ if (!GOOGLE_CLIENT_ID) {
   console.error("Google Client ID not found. Please set VITE_GOOGLE_CLIENT_ID in .env file");
 }
 
+import ErrorBoundary from "./components/ErrorBoundary";
+
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
-      <BrowserRouter>
-        <App />
-      </BrowserRouter>
-    </GoogleOAuthProvider>
+    <ErrorBoundary>
+      <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
+        <BrowserRouter>
+          <App />
+        </BrowserRouter>
+      </GoogleOAuthProvider>
+    </ErrorBoundary>
   </React.StrictMode>
 );
 

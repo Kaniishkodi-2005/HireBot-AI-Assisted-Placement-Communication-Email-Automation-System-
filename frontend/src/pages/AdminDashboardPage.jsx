@@ -1,19 +1,55 @@
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import HrDashboardPage from "./HrDashboardPage";
 import StudentDashboardPage from "./StudentDashboardPage";
 import http from "../services/httpClient";
 
 function AdminDashboardPage() {
-  const [activeTab, setActiveTab] = useState("admin");
+  const [activeTab, setActiveTab] = useState(() => {
+    return localStorage.getItem("adminActiveTab") || "admin";
+  });
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [notification, setNotification] = useState(null);
+  const [showLogsModal, setShowLogsModal] = useState(false);
+  const [accessLogs, setAccessLogs] = useState([]);
+  const [loadingLogs, setLoadingLogs] = useState(false);
 
   useEffect(() => {
+    if (showLogsModal) {
+      fetchLogs();
+    }
+  }, [showLogsModal]);
+
+  const fetchLogs = async () => {
+    setLoadingLogs(true);
+    try {
+      const { data } = await http.get('/auth/logs');
+      setAccessLogs(data);
+    } catch (error) {
+      console.error('Failed to fetch logs:', error);
+    } finally {
+      setLoadingLogs(false);
+    }
+  };
+
+  useEffect(() => {
+    localStorage.setItem("adminActiveTab", activeTab);
     if (activeTab === "admin") {
       loadUsers();
     }
   }, [activeTab]);
+
+  useEffect(() => {
+    if (showLogsModal) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [showLogsModal]);
 
   const loadUsers = async () => {
     setLoading(true);
@@ -113,15 +149,24 @@ function AdminDashboardPage() {
             </div>
           )}
 
-          <header>
-            <h2 className="text-3xl font-bold text-gray-900">Access Management</h2>
-            <p className="text-sm text-gray-600 mt-1">
-              Control who can access the system, manage user permissions, and approve registrations
-            </p>
+          <header className="flex justify-between items-start">
+            <div>
+              <h2 className="text-3xl font-bold text-gray-900">Access Management</h2>
+              <p className="text-sm text-gray-600 mt-1">
+                Control who can access the system, manage user permissions, and approve registrations
+              </p>
+            </div>
+            <button
+              onClick={() => setShowLogsModal(true)}
+              className="relative px-4 py-2 rounded-lg font-semibold text-sm shadow-md transition-all flex items-center gap-2 text-white"
+              style={{ background: 'linear-gradient(135deg, #6B64F2 0%, #8E5BF6 50%, #A656F7 100%)' }}
+            >
+              <span className="text-lg">📋</span>
+              View Login Logs
+            </button>
           </header>
 
           {/* Stats Cards */}
-          {/* Stats Cards - Styles matched to HR Dashboard */}
           <div className="grid md:grid-cols-4 gap-6">
             <div className="bg-white rounded-xl p-6 relative overflow-hidden group transition-all duration-300" style={{ boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
               <div className="absolute top-4 right-4">
@@ -130,7 +175,7 @@ function AdminDashboardPage() {
                 </svg>
               </div>
               <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider mb-2">Total Users</p>
-              <p className="text-4xl font-bold text-slate-800">{users.length}</p>
+              <p className="text-4xl font-bold text-slate-800">{(users || []).length}</p>
             </div>
 
             <div className="bg-white rounded-xl p-6 relative overflow-hidden group transition-all duration-300" style={{ boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
@@ -140,7 +185,7 @@ function AdminDashboardPage() {
                 </svg>
               </div>
               <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider mb-2">Active Users</p>
-              <p className="text-4xl font-bold text-slate-800">{users.filter(u => u.is_approved && u.is_active).length}</p>
+              <p className="text-4xl font-bold text-slate-800">{(users || []).filter(u => u.is_approved && u.is_active).length}</p>
             </div>
 
             <div className="bg-white rounded-xl p-6 relative overflow-hidden group transition-all duration-300" style={{ boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
@@ -150,7 +195,7 @@ function AdminDashboardPage() {
                 </svg>
               </div>
               <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider mb-2">Declined Users</p>
-              <p className="text-4xl font-bold text-slate-800">{users.filter(u => !u.is_active).length}</p>
+              <p className="text-4xl font-bold text-slate-800">{(users || []).filter(u => !u.is_active).length}</p>
             </div>
 
             <div className="bg-white rounded-xl p-6 relative overflow-hidden group transition-all duration-300" style={{ boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
@@ -160,7 +205,7 @@ function AdminDashboardPage() {
                 </svg>
               </div>
               <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider mb-2">Pending Approval</p>
-              <p className="text-4xl font-bold text-slate-800">{users.filter(u => !u.is_approved && u.is_active).length}</p>
+              <p className="text-4xl font-bold text-slate-800">{(users || []).filter(u => !u.is_approved && u.is_active).length}</p>
             </div>
           </div>
 
@@ -187,7 +232,7 @@ function AdminDashboardPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {users.map((user) => {
+                    {(users || []).map((user) => {
                       // Demo Data Mapping
                       let displayOrg = user.organization;
                       if (user.email.toLowerCase().includes('subhiksha')) {
@@ -255,10 +300,82 @@ function AdminDashboardPage() {
         </div>
       )}
 
+      {showLogsModal && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fade-in" onClick={() => setShowLogsModal(false)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="p-6 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+              <div>
+                <h3 className="text-xl font-bold text-gray-800">System Access Logs</h3>
+                <p className="text-sm text-gray-500">Audit trail of user login activities</p>
+              </div>
+              <button
+                onClick={() => setShowLogsModal(false)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="overflow-x-auto flex-1 p-0">
+              {loadingLogs ? (
+                <div className="text-center py-12 text-gray-500">Loading logs...</div>
+              ) : (
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
+                    <tr>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Timestamp</th>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">User Email</th>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Role</th>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-100">
+                    {(accessLogs || []).map((log) => (
+                      <tr key={log.id} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {new Date(log.timestamp + 'Z').toLocaleString()}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                          {log.email} {/* Changed from log.user_email to log.email based on original LogsTable */}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {log.role || 'USER'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${log.action.includes('LOGIN') ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                            }`}>
+                            {log.action}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              {(accessLogs || []).length === 0 && !loadingLogs && (
+                <div className="text-center py-12 text-gray-500">
+                  No logs found.
+                </div>
+              )}
+            </div>
+            <div className="p-4 border-t border-gray-200 bg-gray-50 flex justify-end">
+              <button
+                onClick={() => setShowLogsModal(false)}
+                className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors shadow-sm"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
       {activeTab === "hr" && <HrDashboardPage />}
       {activeTab === "students" && <StudentDashboardPage />}
     </div>
   );
 }
-
 export default AdminDashboardPage;

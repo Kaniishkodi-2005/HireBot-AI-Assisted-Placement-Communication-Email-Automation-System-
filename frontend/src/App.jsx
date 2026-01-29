@@ -13,15 +13,15 @@ import EditHrContactsPage from "./pages/EditHrContactsPage";
 // Protected route wrapper for role-based access
 function ProtectedRoute({ children, allowedRoles }) {
   const { user, loading } = useAuth();
-  
+
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center bg-hb-bg text-gray-900">Loading...</div>;
   }
-  
+
   if (!user) {
     return <Navigate to="/login" replace />;
   }
-  
+
   if (!allowedRoles.includes(user.role)) {
     // Redirect based on role
     if (user.role === "admin") {
@@ -32,7 +32,7 @@ function ProtectedRoute({ children, allowedRoles }) {
       return <Navigate to="/login" replace />;
     }
   }
-  
+
   return children;
 }
 
@@ -65,7 +65,7 @@ function AppRoutes() {
         <Route
           path="/dashboard/students/edit"
           element={
-            <ProtectedRoute allowedRoles={["user"]}>
+            <ProtectedRoute allowedRoles={["user", "admin"]}>
               <EditStudentsPage />
             </ProtectedRoute>
           }
@@ -73,12 +73,12 @@ function AppRoutes() {
         <Route
           path="/dashboard/hr/edit"
           element={
-            <ProtectedRoute allowedRoles={["user"]}>
+            <ProtectedRoute allowedRoles={["user", "admin"]}>
               <EditHrContactsPage />
             </ProtectedRoute>
           }
         />
-        
+
         {/* Admin route - accessible only to "admin" role */}
         <Route
           path="/dashboard/admin"

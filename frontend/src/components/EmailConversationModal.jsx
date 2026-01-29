@@ -43,8 +43,11 @@ function EmailConversationModal({ contact, onClose, onRefresh }) {
       const uniqueConversations = mappedConversations.filter((conv, index, self) => {
         return index === self.findIndex(c => {
           const contentMatch = c.message.trim() === conv.message.trim();
-          const timestampMatch = c.timestamp.getTime() === conv.timestamp.getTime();
-          return contentMatch && timestampMatch;
+          // Match by seconds only (ignore milliseconds difference)
+          const timestampMatch = Math.floor(c.timestamp.getTime() / 1000) === Math.floor(conv.timestamp.getTime() / 1000);
+          const directionMatch = c.direction === conv.direction;
+          const subjectMatch = (c.subject || "").trim() === (conv.subject || "").trim();
+          return contentMatch && timestampMatch && directionMatch && subjectMatch;
         });
       });
 
@@ -112,6 +115,31 @@ function EmailConversationModal({ contact, onClose, onRefresh }) {
     }
   };
 
+  const [otpVerified, setOtpVerified] = useState({}); // { id: content }
+  const [otpInput, setOtpInput] = useState("");
+  const [verifyingId, setVerifyingId] = useState(null);
+  const [otpError, setOtpError] = useState("");
+
+  const handleVerifyOtp = async (id) => {
+    try {
+      const response = await fetch(`http://localhost:8000/hr/conversation/verify-otp/${id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ otp: otpInput })
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || "Verification failed");
+
+      setOtpVerified(prev => ({ ...prev, [id]: data.content }));
+      setVerifyingId(null);
+      setOtpInput("");
+      setOtpError("");
+    } catch (err) {
+      setOtpError(err.message);
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl w-full max-w-4xl h-[85vh] flex flex-col shadow-2xl">
@@ -142,7 +170,20 @@ function EmailConversationModal({ contact, onClose, onRefresh }) {
         </div>
 
         {/* Conversation Area */}
-        <div className="flex-1 overflow-y-auto bg-gray-50 p-6">
+        <div className="flex-1 overflow-y-auto bg-gray-50 p-6 no-print">
+          <style>{`
+            @media print {
+              .no-print { display: none !important; }
+              body { background: white !important; }
+            }
+            .restricted-content {
+              user-select: none !important;
+              -webkit-user-select: none !important;
+              -moz-user-select: none !important;
+              -ms-user-select: none !important;
+            }
+          `}</style>
+
           {conversations.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-gray-400">
               <div className="w-20 h-20 bg-gray-200 rounded-full flex items-center justify-center mb-4">
@@ -171,6 +212,13 @@ function EmailConversationModal({ contact, onClose, onRefresh }) {
 
                 const isSent = conv.direction === 'sent';
 
+                // Get original item from contact.conversation to access confidential flags
+                const rawConv = contact.conversation.find(c => c.id === conv.id);
+                const isConfidential = rawConv?.is_confidential;
+                const isExpired = rawConv?.is_expired;
+                const requireOtp = rawConv?.require_otp && !otpVerified[conv.id];
+                const displayContent = otpVerified[conv.id] || conv.message || conv.content;
+
                 return (
                   <div key={conv.id || idx} className="space-y-2">
                     {showDate && (
@@ -191,14 +239,12 @@ function EmailConversationModal({ contact, onClose, onRefresh }) {
                           {isSent ? (
                             <img
                               src="/avatar.png"
-                              alt="Placement Cell"
                               className="w-full h-full object-cover"
                               onError={(e) => { e.target.style.display = 'none'; e.target.parentElement.innerText = 'P'; }}
                             />
                           ) : (
                             <img
                               src="/hr_avatar.png"
-                              alt="HR"
                               className="w-full h-full object-cover"
                               onError={(e) => { e.target.style.display = 'none'; e.target.parentElement.innerText = 'H'; }}
                             />
@@ -206,27 +252,108 @@ function EmailConversationModal({ contact, onClose, onRefresh }) {
                         </div>
 
                         {/* Message Bubble */}
-                        <div className={`rounded-2xl px-4 py-3 shadow-sm ${isSent
+                        <div className={`rounded-2xl px-4 py-3 shadow-sm ${rawConv?.disable_printing ? 'no-print' : ''} ${isSent
                           ? 'bg-purple-100 text-purple-900 border border-purple-200 rounded-br-md'
                           : 'bg-white text-gray-800 border border-gray-200 rounded-bl-md'
                           }`}>
+
+                          {/* Confidential Header */}
+                          {isConfidential && (
+                            <div className="flex items-center gap-2 mb-3 pb-2 border-b border-red-100">
+                              <span className="flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase tracking-widest rounded-md bg-red-600 text-white shadow-sm">
+                                <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                                  <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                                </svg>
+                                Confidential
+                              </span>
+                              {isExpired && (
+                                <span className="text-[10px] font-bold text-red-700 bg-red-100 px-2 py-1 rounded-md uppercase tracking-tight">Expired Content</span>
+                              )}
+                              {!isExpired && rawConv?.expires_at && (
+                                <span className="text-[10px] text-gray-500 font-medium">Expires: {new Date(rawConv.expires_at).toLocaleDateString()}</span>
+                              )}
+                            </div>
+                          )}
+
                           {/* Subject */}
                           {conv.subject && (
-                            <div className={`text-sm font-medium mb-2 ${isSent ? 'text-purple-700' : 'text-gray-600'
-                              }`}>
+                            <div className={`text-sm font-bold mb-2 ${isSent ? 'text-purple-700' : 'text-gray-700'}`}>
                               {conv.subject}
                             </div>
                           )}
 
                           {/* Message Content */}
-                          <div className="whitespace-pre-wrap text-sm leading-relaxed">
-                            {conv.message || conv.content || 'No content available'}
-                          </div>
+                          {requireOtp && !isExpired ? (
+                            <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg flex flex-col items-center gap-3 w-full min-w-[300px]">
+                              <div className="w-10 h-10 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center">
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} /></svg>
+                              </div>
+                              <p className="text-xs font-semibold text-gray-600 text-center">Identity Verification Required</p>
+
+                              {verifyingId === conv.id ? (
+                                <div className="space-y-3 w-full">
+                                  <input
+                                    type="text"
+                                    placeholder="Enter 6-digit OTP"
+                                    maxLength={6}
+                                    value={otpInput}
+                                    onChange={(e) => setOtpInput(e.target.value)}
+                                    className="w-full text-center tracking-[0.5em] text-lg font-bold border rounded-md py-2 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    autoFocus
+                                  />
+                                  {otpError && <p className="text-[10px] text-red-600 text-center">{otpError}</p>}
+                                  <div className="flex gap-2">
+                                    <button
+                                      onClick={() => handleVerifyOtp(conv.id)}
+                                      className="flex-1 bg-blue-600 text-white rounded-md py-2 text-xs font-bold hover:bg-blue-700 transition-colors"
+                                    >
+                                      Verify
+                                    </button>
+                                    <button
+                                      onClick={() => { setVerifyingId(null); setOtpInput(""); setOtpError(""); }}
+                                      className="px-4 border rounded-md text-xs"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={() => setVerifyingId(conv.id)}
+                                  className="w-full bg-blue-600 text-white rounded-md py-2 text-xs font-bold hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 shadow-sm"
+                                >
+                                  Unlock Message
+                                </button>
+                              )}
+                            </div>
+                          ) : (
+                            <div
+                              className={`text-sm leading-relaxed prose prose-sm max-w-none email-content ${rawConv?.disable_copying ? 'restricted-content' : ''}`}
+                              dangerouslySetInnerHTML={{ __html: displayContent || 'No content available' }}
+                              onContextMenu={rawConv?.disable_copying ? (e) => e.preventDefault() : undefined}
+                              style={{
+                                wordBreak: 'break-word',
+                                overflowWrap: 'break-word'
+                              }}
+                            />
+                          )}
+
+                          <style dangerouslySetInnerHTML={{
+                            __html: `
+                            .email-content img {
+                              max-width: 100%;
+                              height: auto;
+                              border-radius: 8px;
+                              margin: 8px 0;
+                            }
+                          `}} />
 
                           {/* Timestamp */}
-                          <div className={`text-xs mt-2 ${isSent ? 'text-purple-600' : 'text-gray-500'
+                          <div className={`text-xs mt-3 pt-2 border-t flex items-center justify-between ${isSent ? 'text-purple-600 border-purple-200' : 'text-gray-500 border-gray-100'
                             }`}>
-                            {formatTime(conv.timestamp)}
+                            <span>{formatTime(conv.timestamp)}</span>
+                            {isSent && <span className="flex items-center gap-1 opacity-70"><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg> Delivered</span>}
                           </div>
                         </div>
                       </div>
@@ -239,7 +366,6 @@ function EmailConversationModal({ contact, onClose, onRefresh }) {
           )}
         </div>
       </div>
-
     </div>
   );
 }

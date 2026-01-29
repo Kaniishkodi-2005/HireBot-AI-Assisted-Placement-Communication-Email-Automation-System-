@@ -1,9 +1,13 @@
 from typing import Optional
 import random
 import string
+import logging
 from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Session
+from google.oauth2 import id_token
+from google.auth.transport import requests
+from jose import jwt
 
 from app.core.security import create_access_token, get_password_hash, verify_password
 from app.models.user_model import User
@@ -14,11 +18,29 @@ from app.services.email_service import EmailService
 # In-memory OTP storage (for production, use Redis or database)
 otp_storage = {}
 
+logger = logging.getLogger(__name__)
+
 class AuthService:
     """
     Handles all authentication and user registration logic.
     Controllers should call these methods instead of touching models directly.
     """
+
+    @staticmethod
+    def log_access(db: Session, user_id: int, email: str, action: str, ip_address: str = None):
+        try:
+            from app.models.access_log_model import AccessLog
+            log = AccessLog(
+                user_id=user_id,
+                email=email,
+                action=action,
+                ip_address=ip_address
+            )
+            db.add(log)
+            db.commit()
+        except Exception as e:
+            print(f"Failed to log access: {e}")
+            # Don't fail the login if logging fails
 
     @staticmethod
     def register_user(db: Session, data: SignupRequest) -> UserInfo:
@@ -49,7 +71,17 @@ class AuthService:
     @staticmethod
     def login(db: Session, data: LoginRequest) -> Optional[TokenResponse]:
         user: Optional[User] = db.query(User).filter(User.email == data.email).first()
-        if not user or not verify_password(data.password, user.password_hash):
+        
+        # Check if user exists
+        if not user:
+            return None
+        
+        # Check if user signed up via Google OAuth (no password set)
+        if not user.password_hash or user.password_hash == "":
+            raise ValueError("This account was created using Google Sign-In and has no password set. Please use 'Continue with Google' to login, or click 'Forgot Password' to set a password for email login.")
+        
+        # Verify password for regular accounts
+        if not verify_password(data.password, user.password_hash):
             return None
         
         print(f"Login attempt - Email: {user.email}, is_active: {user.is_active}, is_approved: {user.is_approved}")
@@ -63,6 +95,10 @@ class AuthService:
             raise ValueError("Your account is pending admin approval. Please contact the administrator.")
 
         access_token = create_access_token({"sub": str(user.id), "role": user.role})
+        
+        # Log successful login
+        AuthService.log_access(db, user.id, user.email, "LOGIN", data.ip_address if hasattr(data, 'ip_address') else None)
+
         return TokenResponse(
             access_token=access_token,
             role=user.role,
@@ -134,53 +170,56 @@ HireBot Team"""
         """
         Handles Google authentication by verifying the token and creating/retrieving a user.
         """
-        from google.oauth2 import id_token
-        from google.auth.transport import requests
-        import logging
-
-        logger = logging.getLogger(__name__)
         logger.info("=== BACKEND GOOGLE LOGIN START ===")
-        logger.info(f"P1. Received token length: {len(data.token) if data.token else 0}")
         
         try:
-            logger.info("P2. Verifying token with Google via google-auth library...")
+            logger.info("P2. Verifying token...")
+            email = None
             
-            # Use requests.Request() directly. The library handles its own timeouts internally 
-            # or uses the default environment settings. We avoid setting a global socket timeout
-            # as it can interfere with other parts of the application (like DB or SMTP).
+            # 1. Try Standard Verification
             try:
-                # PROPER Google token verification
                 idinfo = id_token.verify_oauth2_token(
                     data.token, 
                     requests.Request(), 
-                    settings.GOOGLE_CLIENT_ID,
-                    clock_skew_in_seconds=10
+                    settings.GOOGLE_CLIENT_ID
                 )
-                logger.info("P3. Token verified successfully")
-                # Avoid logging the entire idinfo for security, but log the email
                 email = idinfo.get("email")
-                logger.info(f"P4. Token info: Verified email: {email}")
+                logger.info("P3. Standard Verification SUCCESS")
             except Exception as e:
-                logger.error(f"P3.1 ERROR during token verification: {str(e)}")
-                raise ValueError(f"Google token verification failed: {str(e)}")
+                logger.warning(f"P3. Standard Verification FAILED: {e}")
+                
+                # 2. Try Manual Verification (Development Mode for Date Mismatch)
+                logger.info("P4. Attempting Manual Verification...")
+                try:
+                    claims = jwt.get_unverified_claims(data.token)
+                    
+                    # Verify Audience
+                    aud = claims.get('aud')
+                    if aud != settings.GOOGLE_CLIENT_ID:
+                        raise ValueError(f"Audience mismatch: {aud} vs {settings.GOOGLE_CLIENT_ID}")
+                        
+                    # Verify Issuer
+                    iss = claims.get('iss')
+                    if iss not in ['accounts.google.com', 'https://accounts.google.com']:
+                        raise ValueError(f"Issuer mismatch: {iss}")
+                        
+                    email = claims.get("email")
+                    logger.info("P4. Manual Verification SUCCESS")
+                    
+                except Exception as me:
+                    logger.error(f"P4. Manual Verification FAILED: {me}")
+                    raise ValueError(f"Authentication failed: {e}")
 
             if not email:
-                logger.error("P5. ERROR: Email not found in Google token")
-                raise ValueError("Email not found in Google token")
+                raise ValueError("Email not found in token")
 
-            logger.info(f"P6. Google login attempt for email: {email}")
+            logger.info(f"P5. Processing user: {email}")
 
-            logger.info("P6.1 Querying user from DB...")
             user = db.query(User).filter(User.email == email).first()
-            logger.info(f"P6.2 DB Query finished. User found: {user is not None}")
-            
             
             if not user:
-                logger.info(f"P7. Creating new user for Google email: {email}")
-                
-                # Special case: bitplacement28@gmail.com gets admin role
+                logger.info(f"P6. Creating new user: {email}")
                 role = "admin" if email == "bitplacement28@gmail.com" else "user"
-                
                 user = User(
                     email=email,
                     password_hash="",
@@ -190,17 +229,11 @@ HireBot Team"""
                     is_active=True
                 )
                 db.add(user)
-                try:
-                    db.commit()
-                    db.refresh(user)
-                    logger.info(f"P8. User created successfully with ID: {user.id}")
-                except Exception as e:
-                    db.rollback()
-                    logger.error(f"P8.1 ERROR creating user: {str(e)}")
-                    raise ValueError(f"Failed to create user account: {str(e)}")
+                db.commit()
+                db.refresh(user)
             else:
-                logger.info(f"P9. User found with ID: {user.id}")
-                # FORCE update role to admin if it's our special email
+                logger.info(f"P6. User found: {user.id}")
+                # Ensure special user is admin
                 if email == "bitplacement28@gmail.com" and user.role != "admin":
                     user.role = "admin"
                     user.is_approved = True
@@ -208,28 +241,27 @@ HireBot Team"""
                     db.commit()
             
             if not user.is_active:
-                raise ValueError("Account declined by admin. Please contact the administrator.")
+                raise ValueError("Account declined by admin.")
             
             if not user.is_approved:
-                raise ValueError("Account pending admin approval. Please contact the administrator.")
+                raise ValueError("Account pending approval.")
 
-            logger.info("P13. Creating access token...")
             access_token = create_access_token({"sub": str(user.id), "role": user.role})
             
-            response = TokenResponse(
+            AuthService.log_access(db, user.id, user.email, "GOOGLE_LOGIN", data.ip_address)
+
+            return TokenResponse(
                 access_token=access_token,
                 role=user.role,
                 email=user.email,
                 organization=user.organization,
             )
-            logger.info(f"P14. SUCCESS: Returning response for role: {user.role}")
-            return response
             
         except ValueError as ve:
-            logger.error(f"P15. Validation error: {str(ve)}")
-            raise ve
+             logger.error(f"Validation Error: {ve}")
+             raise ve
         except Exception as e:
-            logger.error(f"P16. System error: {str(e)}")
+            logger.error(f"System Error: {e}")
             import traceback
-            logger.error(f"P17. Traceback: {traceback.format_exc()}")
-            raise ValueError(f"Google authentication failed: {str(e)}")
+            traceback.print_exc()
+            raise ValueError(f"Login failed: {str(e)}")

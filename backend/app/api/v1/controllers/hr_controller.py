@@ -3,7 +3,7 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from app.db.session import get_db
 from app.models.email_models import EmailTemplate
@@ -156,6 +156,34 @@ def generate_draft_for_contact(
 
 @router.get("/conversation/{contact_id}")
 def get_conversation_history(contact_id: int, db: Session = Depends(get_db)):
+    # Auto-dismiss notifications for this contact
+    global HR_REPLY_NOTIFICATIONS
+    HR_REPLY_NOTIFICATIONS = [n for n in HR_REPLY_NOTIFICATIONS if n["contact"]["id"] != contact_id]
+    
+    # Mark emails as read in DB
+    import sys
+    from sqlalchemy import or_
+    from app.models.email_models import EmailConversation
+    
+    # Debug: Check state before update
+    debug_states = db.query(EmailConversation.id, EmailConversation.is_read).filter(
+        EmailConversation.hr_contact_id == contact_id,
+        EmailConversation.direction == "received"
+    ).all()
+    print(f"[DEBUG-STATE] Emails for {contact_id}: {debug_states}")
+
+    updated_count = db.query(EmailConversation).filter(
+        EmailConversation.hr_contact_id == contact_id,
+        EmailConversation.direction == "received",
+        or_(
+            EmailConversation.is_read == 0,
+            EmailConversation.is_read.is_(None)
+        )
+    ).update({"is_read": 1}, synchronize_session=False)
+    db.commit()
+    print(f"[DEBUG] Marked {updated_count} emails as read for contact {contact_id}")
+    sys.stdout.flush()
+    
     result = HRService.get_conversation_history(db, contact_id)
     if result.get("error"):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=result.get("error"))
@@ -177,13 +205,29 @@ def reset_all_statuses(db: Session = Depends(get_db)):
     return HRService.reset_all_statuses(db)
 
 
+@router.post("/sync-all-statuses")
+def sync_all_statuses(db: Session = Depends(get_db)):
+    """Synchronize all HR contact statuses with conversation history"""
+    return HRService.sync_all_statuses(db)
+
+
 @router.post("/send-email/{contact_id}")
 def send_email_to_contact(
     contact_id: int,
     request: EmailSendRequest,
     db: Session = Depends(get_db)
 ):
-    email_data = {"subject": request.subject, "content": request.content}
+    email_data = {
+        "subject": request.subject,
+        "content": request.content,
+        "is_confidential": request.is_confidential,
+        "expiry_days": request.expiry_days,
+        "disable_forwarding": request.disable_forwarding,
+        "disable_copying": request.disable_copying,
+        "disable_downloading": request.disable_downloading,
+        "disable_printing": request.disable_printing,
+        "require_otp": request.require_otp
+    }
     result = HRService.send_email(db, contact_id, email_data)
     
     if result.get("error") == "Contact not found":
@@ -275,66 +319,58 @@ def debug_conversation_display(contact_id: int, db: Session = Depends(get_db)):
 
 @router.post("/fetch-emails/{contact_id}")
 def fetch_emails_for_contact(contact_id: int, db: Session = Depends(get_db)):
-    """Fetch emails for a specific contact"""
-    contact = db.query(HRContact).filter(HRContact.id == contact_id).first()
-    if not contact:
-        raise HTTPException(status_code=404, detail="Contact not found")
+    """Fetch emails for a specific contact using consolidated logic"""
+    return HRService.sync_contact_emails(db, contact_id)
+
+
+
+
+@router.post("/conversation/verify-otp/{conversation_id}")
+def verify_confidential_otp(
+    conversation_id: int, 
+    request: dict, 
+    db: Session = Depends(get_db)
+):
+    """Verify OTP for a confidential email and return its content"""
+    otp = request.get("otp")
+    if not otp:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="OTP is required")
+        
+    from app.models.email_models import EmailConversation
+    conv = db.query(EmailConversation).filter(EmailConversation.id == conversation_id).first()
+    if not conv:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
     
-    try:
-        # Fetch emails only for this specific contact
-        from app.services.email_service import EmailService
-        from app.models.email_models import EmailConversation
-        replies = EmailService.fetch_replies([contact.email], target_email=contact.email)
+    if not conv.is_confidential or not conv.require_otp:
+        return {"content": conv.content}
         
-        stored_count = 0
-        for reply in replies:
-            direction = reply.get("direction", "received")
-            subject = reply.get("subject", "")
-            content = reply.get("body", "")
-            
-            # Check for duplicate
-            existing = db.query(EmailConversation).filter(
-                EmailConversation.hr_contact_id == contact_id,
-                EmailConversation.subject == subject,
-                EmailConversation.content == content,
-                EmailConversation.direction == direction
-            ).first()
-            
-            if not existing:
-                conversation = EmailConversation(
-                    hr_contact_id=contact_id,
-                    subject=subject,
-                    content=content,
-                    direction=direction,
-                    sent_at=datetime.utcnow()
-                )
-                db.add(conversation)
-                stored_count += 1
+    # Check if expired
+    if conv.expires_at and conv.expires_at < datetime.utcnow():
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This confidential message has expired")
         
+    if conv.otp_code == otp:
+        # Log successful access
+        from app.models.confidential_log_model import ConfidentialAccessLog
+        log = ConfidentialAccessLog(
+            conversation_id=conversation_id,
+            action="VIEW",
+            accessed_at=datetime.utcnow()
+        )
+        db.add(log)
         db.commit()
-        return {"message": f"Fetched {stored_count} new emails", "count": stored_count}
-    except Exception as e:
-        return {"message": f"Error: {str(e)}", "count": 0}
-
-
-@router.post("/fetch-emails")
-def fetch_received_emails(db: Session = Depends(get_db)):
-    """Fetch new emails from IMAP and store them"""
-    result = HRService.fetch_and_store_received_emails(db)
-    return result
-
-@router.delete("/clear-conversations")
-def clear_all_conversations(db: Session = Depends(get_db)):
-    """Clear all conversations from database"""
-    try:
-        from app.models.email_models import EmailConversation
-        count = db.query(EmailConversation).count()
-        db.query(EmailConversation).delete()
+        
+        return {"content": conv.content, "message": "OTP verified successfully"}
+    else:
+        # Log failed attempt
+        from app.models.confidential_log_model import ConfidentialAccessLog
+        log = ConfidentialAccessLog(
+            conversation_id=conversation_id,
+            action="BLOCKED",
+            accessed_at=datetime.utcnow()
+        )
+        db.add(log)
         db.commit()
-        return {"message": f"Cleared {count} conversations", "count": count}
-    except Exception as e:
-        db.rollback()
-        return {"error": str(e)}
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid OTP code")
 
 @router.post("/send-followup/{contact_id}")
 def send_followup_email(
@@ -710,58 +746,117 @@ def get_hr_reply_notifications():
     return {"notifications": HR_REPLY_NOTIFICATIONS}
 
 @router.post("/notifications/dismiss/{notification_id}")
-def dismiss_hr_reply_notification(notification_id: str):
-    """Dismiss a specific HR reply notification"""
+def dismiss_hr_reply_notification(notification_id: str, db: Session = Depends(get_db)):
+    """Dismiss a specific HR reply notification and mark email as read"""
     global HR_REPLY_NOTIFICATIONS
+    
+    # Find the notification to get the email_id
+    notification = next((n for n in HR_REPLY_NOTIFICATIONS if n["id"] == notification_id), None)
+    if notification and "email_id" in notification:
+        from app.models.email_models import EmailConversation
+        email_record = db.query(EmailConversation).filter(EmailConversation.id == notification["email_id"]).first()
+        if email_record:
+            email_record.is_read = 1
+            db.commit()
+            print(f"[NOTIFICATIONS] Marked email {email_record.id} as read via dismissal")
+
     HR_REPLY_NOTIFICATIONS = [n for n in HR_REPLY_NOTIFICATIONS if n["id"] != notification_id]
-    return {"message": "Notification dismissed"}
+    return {"message": "Notification dismissed and marked as read"}
+
+@router.post("/fetch-emails")
+def fetch_received_emails(db: Session = Depends(get_db)):
+    """Fetch new emails from Gmail for all contacts"""
+    print(f"[NOTIFICATIONS] Manually triggering email fetch at {datetime.utcnow()}")
+    try:
+        result = HRService.fetch_and_store_received_emails(db)
+        return result
+    except Exception as e:
+        print(f"Error fetching emails: {str(e)}")
+        # Don't crash the frontend polling
+        return {"message": "Effective sync failed", "count": 0, "error": str(e)}
+
 
 @router.post("/notifications/check")
 def check_for_new_hr_replies(db: Session = Depends(get_db)):
     """Check for new HR replies and create notifications"""
+    print(f"[NOTIFICATIONS] Checking for new notifications at {datetime.utcnow()}")
     try:
         # Get all contacts
         contacts = db.query(HRContact).all()
         new_notifications = []
         
+        from app.models.email_models import EmailConversation
+        
         for contact in contacts:
-            # Check if there are new received emails for this contact
-            from app.models.email_models import EmailConversation
-            from datetime import datetime, timedelta
-            
-            # Check for received emails in the last 30 minutes (increased window)
-            recent_cutoff = datetime.utcnow() - timedelta(minutes=30)
-            
-            recent_replies = db.query(EmailConversation).filter(
-                EmailConversation.hr_contact_id == contact.id,
-                EmailConversation.direction == "received",
-                EmailConversation.sent_at >= recent_cutoff
-            ).order_by(EmailConversation.sent_at.desc()).all()
-            
-            for reply in recent_replies:
-                # Check if we already have a notification for this reply
-                existing_notification = next(
-                    (n for n in HR_REPLY_NOTIFICATIONS if n.get("email_id") == reply.id),
-                    None
-                )
+            try:
+                # Check for received emails in the last 60 minutes
+                # STRICT FILTER: Only UNREAD (is_read=0 or None)
+                now = datetime.utcnow()
+                recent_cutoff = now - timedelta(minutes=60)
                 
-                if not existing_notification:
-                    notification = {
-                        "id": f"hr_reply_{reply.id}_{int(datetime.utcnow().timestamp())}",
-                        "email_id": reply.id,
-                        "contact": {
-                            "id": contact.id,
-                            "name": contact.name,
-                            "company": contact.company,
-                            "email": contact.email
-                        },
-                        "subject": reply.subject,
-                        "timestamp": reply.sent_at.isoformat() + 'Z' if reply.sent_at else datetime.utcnow().isoformat() + 'Z',
-                        "created_at": datetime.utcnow().isoformat()
-                    }
-                    HR_REPLY_NOTIFICATIONS.append(notification)
-                    new_notifications.append(notification)
-                    print(f"[NOTIFICATION] Created for {contact.name} from {contact.company} - Email ID: {reply.id}")
+                recent_replies = db.query(EmailConversation).filter(
+                    EmailConversation.hr_contact_id == contact.id,
+                    EmailConversation.direction == "received",
+                    EmailConversation.created_at >= recent_cutoff,
+                    or_(
+                        EmailConversation.is_read == 0,
+                        EmailConversation.is_read.is_(None)
+                    )
+                ).order_by(EmailConversation.sent_at.desc()).all()
+                
+                for reply in recent_replies:
+                    try:
+                        print(f"[NOTIFICATIONS] Processing reply: {reply.subject} (ID: {reply.id})")
+                        
+                        # Check if we already have a notification for this specific email ID
+                        existing_notification = next(
+                            (n for n in HR_REPLY_NOTIFICATIONS if n.get("email_id") == reply.id),
+                            None
+                        )
+                        
+                        if existing_notification:
+                            print(f"[NOTIFICATIONS] Skipping {reply.id} - Notification already exists")
+                            continue
+                        
+                        # Double-check: prevent duplicate alerts for same subject/contact in logical window
+                        current_time = datetime.utcnow()
+                        logical_duplicate = next(
+                            (n for n in HR_REPLY_NOTIFICATIONS if 
+                                n["contact"]["id"] == contact.id and 
+                                n["subject"] == reply.subject and
+                                abs((current_time - datetime.fromisoformat(n["created_at"].replace('Z', ''))).total_seconds()) < 1), # Reduced to 1s to allow seq notifications
+                            None
+                        )
+                        
+                        if logical_duplicate:
+                            print(f"[NOTIFICATIONS] Skipping {reply.id} - Logical duplicate of {logical_duplicate['id']}")
+                            continue
+                        
+                        print(f"[NOTIFICATIONS] Creating new notification for {reply.subject}")
+                        notification = {
+                                "id": f"hr_reply_{reply.id}_{int(datetime.utcnow().timestamp())}",
+                                "email_id": reply.id,
+                                "contact": {
+                                    "id": contact.id,
+                                    "name": contact.name,
+                                    "company": contact.company,
+                                    "email": contact.email
+                                },
+                                "subject": reply.subject,
+                                "timestamp": reply.sent_at.isoformat() + 'Z' if reply.sent_at else datetime.utcnow().isoformat() + 'Z',
+                                "created_at": datetime.utcnow().isoformat()
+                            }
+                        
+                        HR_REPLY_NOTIFICATIONS.append(notification)
+                        new_notifications.append(notification)
+                        print(f"[NOTIFICATION] Created for {contact.name} from {contact.company} - Email ID: {reply.id}")
+                    except Exception as inner_e:
+                        print(f"[ERROR] processing reply {reply.id}: {str(inner_e)}")
+                        continue
+            except Exception as e:
+                print(f"[ERROR] processing contact {contact.id}: {str(e)}")
+                continue
+
         
         return {
             "message": f"Found {len(new_notifications)} new HR replies",
@@ -785,7 +880,11 @@ def force_check_notifications(db: Session = Depends(get_db)):
         
         all_recent_replies = db.query(EmailConversation).filter(
             EmailConversation.direction == "received",
-            EmailConversation.sent_at >= recent_cutoff
+            EmailConversation.sent_at >= recent_cutoff,
+            or_(
+                EmailConversation.is_read == 0,
+                EmailConversation.is_read.is_(None)
+            )
         ).order_by(EmailConversation.sent_at.desc()).all()
         
         new_notifications = []

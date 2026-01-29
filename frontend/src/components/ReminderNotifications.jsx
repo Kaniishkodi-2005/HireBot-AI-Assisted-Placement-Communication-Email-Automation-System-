@@ -10,6 +10,7 @@ function ReminderNotifications({ onClose, onCountChange }) {
   const [selectedReminder, setSelectedReminder] = useState(null);
   const [draftEmail, setDraftEmail] = useState(null);
   const [recentlyFulfilled, setRecentlyFulfilled] = useState(null);
+  const [lastVisitCount, setLastVisitCount] = useState(0);
 
   useEffect(() => {
     checkReminders();
@@ -29,6 +30,11 @@ function ReminderNotifications({ onClose, onCountChange }) {
         r.description.toLowerCase().includes('visit') ||
         (r.due_date_str && r.due_date_str.toLowerCase().includes('visit'))
       );
+
+      // Play sound if we have new urgent visits (today/tomorrow)
+      const urgentVisits = visits.filter(r => r.is_today || r.is_tomorrow).length;
+      // Sound disabled
+      setLastVisitCount(urgentVisits);
 
       const others = reminders.filter(r =>
         !r.description.toLowerCase().includes('visit') &&
@@ -57,17 +63,17 @@ function ReminderNotifications({ onClose, onCountChange }) {
 
     try {
       await markReminderFulfilled(reminderId);
-      
+
       // Find the fulfilled reminder for undo functionality
       const fulfilledReminder = [...pendingReminders, ...visitReminders].find(r => r.id === reminderId);
-      
+
       // Remove from both regular reminders and visit reminders
       const updatedReminders = pendingReminders.filter(r => r.id !== reminderId);
       const updatedVisits = visitReminders.filter(r => r.id !== reminderId);
       setPendingReminders(updatedReminders);
       setVisitReminders(updatedVisits);
       updateTotalCount(updatedReminders.length, updatedVisits.length);
-      
+
       // Set up undo option
       setRecentlyFulfilled(fulfilledReminder);
       setTimeout(() => setRecentlyFulfilled(null), 10000); // Clear after 10 seconds
@@ -81,13 +87,13 @@ function ReminderNotifications({ onClose, onCountChange }) {
       console.log('Generating reminder draft for:', reminder);
       const draft = await generateReminderDraft(reminder.id);
       console.log('Draft generated:', draft);
-      
+
       // Check if it's a date restriction error
       if (draft.error === 'date_restriction') {
         alert(`⚠️ Reminder Draft Unavailable\n\n${draft.message}`);
         return;
       }
-      
+
       setSelectedReminder(reminder);
       setDraftEmail(draft);
       setShowDraftModal(true);
@@ -100,26 +106,26 @@ function ReminderNotifications({ onClose, onCountChange }) {
   const handleApproveDraft = async (approvedDraft) => {
     try {
       const result = await sendEmail(selectedReminder.contact_id, approvedDraft);
-      
+
       // Check if the result indicates an error
       if (result.error || result.status === "failed") {
         alert(`Failed to send email: ${result.error || result.message || "Unknown error"}`);
         return;
       }
-      
+
       // Success - email sent, but don't mark as fulfilled automatically
       // The reminder should remain active until manually marked as fulfilled
-      
+
       // Close modal and show success
       setShowDraftModal(false);
       setSelectedReminder(null);
       setDraftEmail(null);
-      
+
       alert(`✅ Reminder email sent successfully to ${selectedReminder.contact_name}!`);
-      
+
       // Refresh the reminders list to ensure it's up to date
       checkReminders();
-      
+
     } catch (error) {
       console.error('Failed to send reminder email:', error);
       const errorMessage = error.response?.data?.error ||
@@ -133,16 +139,16 @@ function ReminderNotifications({ onClose, onCountChange }) {
 
   const handleUndoFulfilled = async () => {
     if (!recentlyFulfilled) return;
-    
+
     try {
       console.log('Attempting to restore reminder:', recentlyFulfilled.id);
       // Call API to restore reminder
       await http.put(`/hr/reminders/${recentlyFulfilled.id}/restore`);
       console.log('Reminder restored successfully');
-      
+
       // Refresh the entire reminders list to get proper sorting
       await checkReminders();
-      
+
       setRecentlyFulfilled(null);
       console.log('Undo completed successfully');
     } catch (error) {
@@ -203,22 +209,19 @@ function ReminderNotifications({ onClose, onCountChange }) {
             <div className="space-y-4">
               {/* Visit Reminders */}
               {visitReminders.map((notification) => (
-                <div key={`visit-${notification.id}`} className={`rounded-lg p-4 border ${
-                  notification.is_today || notification.is_tomorrow
-                    ? 'bg-red-50 border-red-200'
-                    : 'bg-purple-50 border-purple-200'
-                }`}>
+                <div key={`visit-${notification.id}`} className={`rounded-lg p-4 border ${notification.is_today || notification.is_tomorrow
+                  ? 'bg-red-50 border-red-200'
+                  : 'bg-purple-50 border-purple-200'
+                  }`}>
                   <div className="flex items-center gap-2 mb-2">
-                    <div className={`w-2 h-2 rounded-full animate-pulse ${
-                      notification.is_today || notification.is_tomorrow
-                        ? 'bg-red-500'
-                        : 'bg-purple-500'
-                    }`}></div>
-                    <h4 className={`text-sm font-semibold ${
-                      notification.is_today || notification.is_tomorrow
-                        ? 'text-red-800'
-                        : 'text-purple-800'
-                    }`}>
+                    <div className={`w-2 h-2 rounded-full animate-pulse ${notification.is_today || notification.is_tomorrow
+                      ? 'bg-red-500'
+                      : 'bg-purple-500'
+                      }`}></div>
+                    <h4 className={`text-sm font-semibold ${notification.is_today || notification.is_tomorrow
+                      ? 'text-red-800'
+                      : 'text-purple-800'
+                      }`}>
                       {notification.is_today ? '🔔 Today\'s Visit' :
                         notification.is_tomorrow ? '⏰ Tomorrow\'s Visit' :
                           `📅 Upcoming: ${notification.deadline_text}`}
@@ -235,7 +238,7 @@ function ReminderNotifications({ onClose, onCountChange }) {
                   <div className="text-sm text-gray-600 mb-3">
                     {notification.description}
                   </div>
-                  
+
                   <div className="flex gap-3 mt-4">
                     <button
                       onClick={() => handleMarkFulfilled(notification.id)}

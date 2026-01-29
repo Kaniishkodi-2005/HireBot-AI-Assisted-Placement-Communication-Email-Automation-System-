@@ -10,6 +10,7 @@ frontend/.env
 # Python
 __pycache__/
 *.py[cod]
+*.pyc
 *$py.class
 *.so
 .Python
@@ -108,3 +109,9 @@ coverage.xml
 # Backup files
 *.bak
 *.backup
+
+node_modules/
+frontend/node_modules/
+frontend/node_modules/.vite/
+dist/
+.env

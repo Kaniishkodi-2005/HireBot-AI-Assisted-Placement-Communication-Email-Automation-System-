@@ -14,10 +14,12 @@ class SignupRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+    ip_address: Optional[str] = None
 
 
 class GoogleLoginRequest(BaseModel):
     token: str
+    ip_address: Optional[str] = None
 
 
 class ForgotPasswordRequest(BaseModel):

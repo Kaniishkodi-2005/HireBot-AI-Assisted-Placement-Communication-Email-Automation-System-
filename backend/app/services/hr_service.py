@@ -1,6 +1,7 @@
 from typing import List
 import re
 import os
+import email
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
@@ -102,16 +103,37 @@ class HRService:
             if not iso_str.endswith('Z') and '+00:00' not in iso_str:
                  iso_str += 'Z'
 
+            # Determine content and flags for confidential mode
+            is_confidential = bool(conv.is_confidential)
+            require_otp = bool(conv.require_otp)
+            content = conv.content or ''
+            
+            # Check if expired
+            is_expired = False
+            if conv.expires_at and conv.expires_at < datetime.utcnow():
+                is_expired = True
+                content = "[This confidential message has expired and is no longer viewable]"
+            elif is_confidential and require_otp:
+                content = "[This is a confidential message. OTP verification required to view content]"
+
             conversation_item = {
                 "id": conv.id,
                 "subject": conv.subject,
-                "content": conv.content,
+                "content": content,
                 "direction": conv.direction,
                 "sender": sender,
                 "recipient": recipient,
                 "timestamp": timestamp_ms,
                 "date_display": dt.strftime("%b %d, %I:%M %p") if dt else "", 
-                "sent_at": iso_str
+                "sent_at": iso_str,
+                "is_confidential": is_confidential,
+                "is_expired": is_expired,
+                "expires_at": conv.expires_at.isoformat() + 'Z' if conv.expires_at else None,
+                "disable_forwarding": bool(conv.disable_forwarding),
+                "disable_copying": bool(conv.disable_copying),
+                "disable_downloading": bool(conv.disable_downloading),
+                "disable_printing": bool(conv.disable_printing),
+                "require_otp": require_otp
             }
             conversation_list.append(conversation_item)
         
@@ -171,7 +193,12 @@ class HRService:
                         inc_subj = subject.lower().strip()
                         inc_body = content.lower().strip().replace('\r','').replace('\n','').replace(' ','')
                         
-                        if c_subj == inc_subj and c_body == inc_body:
+                        # Match by content AND timestamp (within 2 seconds to allow for minor precision drifts)
+                        time_match = False
+                        if cand.sent_at and reply.get("parsed_timestamp"):
+                            time_match = abs((cand.sent_at - reply.get("parsed_timestamp")).total_seconds()) < 2
+                        
+                        if c_subj == inc_subj and c_body == inc_body and time_match:
                             existing = cand
                             if message_id: cand.message_id = message_id
                             # Sync timestamp
@@ -182,6 +209,12 @@ class HRService:
                             break
                 
                 if existing:
+                    # If existing record has cid: but fresh one has base64 data, update it
+                    if "cid:" in (existing.content or "") and "data:image/" in (content or ""):
+                        print(f"[DEBUG] Refreshing image data for existing email: {subject}")
+                        existing.content = content
+                        db.commit()
+                    
                     if message_id: processed_ids.add(message_id)
                     continue
 
@@ -228,43 +261,47 @@ class HRService:
         try:
             # Send email using EmailService
             print(f"[DEBUG] Attempting to send email to {contact.email}")
-            success = EmailService.send_email(
+            success, generated_id = EmailService.send_email(
                 to_email=contact.email,
                 subject=email_data.get('subject', 'Placement Communication'),
                 body=email_data.get('content', '')
             )
-            print(f"[DEBUG] Email send result: {success}")
+            print(f"[DEBUG] Email send result: {success}, ID: {generated_id}")
             
             if success:
                 print(f"[DEBUG] Email sent successfully, storing conversation...")
-                # Store conversation with current UTC time
-                now_utc = datetime.utcnow()
-                print(f"[DEBUG] Current UTC time for storage: {now_utc}")
-                print(f"[DEBUG] Storing conversation in database...")
+                # Store conversation with current UTC time, normalized to seconds
+                now_utc = datetime.utcnow().replace(microsecond=0)
                 
-                # Generate a hash ID so this email has a unique identifier immediately
-                # This matches the logic in EmailService to prevent duplicates during sync
-                import hashlib
-                from app.core.config import settings
+                # Extract confidential settings
+                is_confidential = email_data.get('is_confidential', False)
+                expiry_days = email_data.get('expiry_days', 7)
                 
-                sender = settings.EMAIL_USER.lower().strip() if settings.EMAIL_USER else "placement@college.edu"
-                subject_norm = email_data.get('subject', 'Placement Communication').lower().strip()
+                expires_at = None
+                otp_code = None
+                if is_confidential:
+                    from datetime import timedelta
+                    import random
+                    import string
+                    expires_at = now_utc + timedelta(days=expiry_days)
+                    if email_data.get('require_otp'):
+                        otp_code = ''.join(random.choices(string.digits, k=6))
                 
-                # We use a rough timestamp match or just rely on the fact that sync checks existing content
-                # But providing an ID is safer.
-                # Let's use the exact isoformat string we are storing as the key
-                date_str = now_utc.isoformat()
-                
-                raw_str = f"{sender}|{subject_norm}|{date_str}" 
-                generated_id = hashlib.md5(raw_str.encode('utf-8', errors='ignore')).hexdigest()
-
                 conversation = EmailConversation(
                     hr_contact_id=contact_id,
                     subject=email_data.get('subject', 'Placement Communication'),
                     content=email_data.get('content', ''),
                     direction="sent",
                     sent_at=now_utc,
-                    message_id=generated_id
+                    message_id=generated_id,
+                    is_confidential=1 if is_confidential else 0,
+                    expires_at=expires_at,
+                    disable_forwarding=1 if email_data.get('disable_forwarding') else 0,
+                    disable_copying=1 if email_data.get('disable_copying') else 0,
+                    disable_downloading=1 if email_data.get('disable_downloading') else 0,
+                    disable_printing=1 if email_data.get('disable_printing') else 0,
+                    require_otp=1 if email_data.get('require_otp') else 0,
+                    otp_code=otp_code
                 )
                 db.add(conversation)
                 print(f"[DEBUG] Added conversation to session, committing...")
@@ -325,70 +362,127 @@ class HRService:
     
     @staticmethod
     def fetch_and_store_received_emails(db: Session) -> dict:
-        """Fetch new emails from IMAP and store them for all contacts"""
+        """Fetch new emails from IMAP and store them for all contacts in ONE connection"""
         try:
             contacts = db.query(HRContact).all()
-            total_stored = 0
+            if not contacts:
+                return {"message": "No contacts to sync", "count": 0}
             
-            for contact in contacts:
-                replies = EmailService.fetch_replies([contact.email], target_email=contact.email)
-                stored_count = 0
-                processed_ids = set()
-                latest_received_content = None
+            all_emails = [c.email for c in contacts if c.email]
+            # Perform a SINGLE fetch for all contacts with a short lookback (2 days) for speed
+            print(f"[IMAP] Performing bulk fetch for {len(all_emails)} contacts (2-day lookback)...")
+            all_replies = EmailService.fetch_replies(all_emails, lookback_days=2)
+            
+            # Map replies to contact emails for easy lookups
+            replies_by_email = {}
+            for reply in all_replies:
+                direction = reply.get("direction")
+                email_addr = ""
+                if direction == "received":
+                    # For received, the 'from' contains the HR email
+                    from_header = reply.get("from", "")
+                    email_addr = EmailService.validate_email(email.utils.parseaddr(from_header)[1].lower().strip()) and email.utils.parseaddr(from_header)[1].lower().strip() or ""
+                else:
+                    # For sent, the 'to' is not explicitly in the reply dict yet, but fetch_replies filters it
+                    # Let's assume we can match it back or just process all and filter
+                    pass
                 
-                for reply in replies:
-                    direction = reply.get("direction", "received")
-                    subject = reply.get("subject", "")
-                    content = reply.get("body", "")
-                    message_id = reply.get("message_id")
+                # Implementation detail: fetch_replies doesn't return the recipient email for sent items easily 
+                # in the current structure without re-parsing. 
+                # However, for RECEIVED notifications (the user's main concern), we prioritize 'received' direction.
+            
+            # Simplified approach: Loop through all replies and match to contacts
+            total_stored = 0
+            replies_processed = 0
+            
+            # Create a mapping for faster lookup
+            contact_map = {c.email.lower().strip(): c for c in contacts if c.email}
+            
+            for reply in all_replies:
+                replies_processed += 1
+                direction = reply.get("direction", "received")
+                subject = reply.get("subject", "")
+                content = reply.get("body", "")
+                message_id = reply.get("message_id")
+                pts = reply.get("parsed_timestamp") or datetime.utcnow()
+                
+                # Determine which contact this belongs to
+                target_contact = None
+                if direction == "received":
+                    partner_email = email.utils.parseaddr(reply.get("from", ""))[1].lower().strip()
+                    target_contact = contact_map.get(partner_email)
+                else: 
+                    # For SENT, match by the 'to' field we added to fetch_replies
+                    recipient_email = reply.get("to", "").lower().strip()
+                    target_contact = contact_map.get(recipient_email)
+                
+                if not target_contact:
+                    continue
+                
+                # Deduplication 1: ID
+                existing = db.query(EmailConversation).filter(
+                    EmailConversation.hr_contact_id == target_contact.id,
+                    EmailConversation.message_id == message_id
+                ).first()
+                
+                # Deduplication 2: Content (Aggressive)
+                if not existing:
+                    # Check recent emails for this contact with same direction and content
+                    recent_candidates = db.query(EmailConversation).filter(
+                        EmailConversation.hr_contact_id == target_contact.id,
+                        EmailConversation.direction == direction
+                    ).order_by(EmailConversation.sent_at.desc()).limit(10).all()
                     
-                    if not content or not content.strip():
-                        continue
-                    
-                    if message_id and message_id in processed_ids:
-                        continue
+                    for cand in recent_candidates:
+                        c_subj = (cand.subject or "").lower().strip()
+                        c_body = (cand.content or "").lower().strip().replace('\r','').replace('\n','').replace(' ','')
+                        inc_subj = subject.lower().strip()
+                        inc_body = content.lower().strip().replace('\r','').replace('\n','').replace(' ','')
+                        
+                        # Match by content AND timestamp (within 2 seconds)
+                        time_match = False
+                        if cand.sent_at and pts:
+                            # pts is reply.get("parsed_timestamp") or datetime.utcnow()
+                            time_match = abs((cand.sent_at - pts).total_seconds()) < 2
 
-                    # Check for duplicates via ID
-                    if message_id:
-                        existing = db.query(EmailConversation).filter(
-                            EmailConversation.hr_contact_id == contact.id,
-                            EmailConversation.message_id == message_id
-                        ).first()
-                        if existing:
-                            processed_ids.add(message_id)
-                            continue
-                    
-                    # Store the email
-                    pts = reply.get("parsed_timestamp") or datetime.utcnow()
-                    
-                    conversation = EmailConversation(
-                        hr_contact_id=contact.id,
-                        subject=subject,
-                        content=content,
-                        direction=direction,
-                        sent_at=pts,
-                        message_id=message_id
-                    )
-                    db.add(conversation)
-                    if direction == "received":
-                         latest_received_content = content
-                         # Process intent immediately for received emails
-                         HRService._process_intent_for_email(db, contact, content)
-                    stored_count += 1
-                    if message_id:
-                        processed_ids.add(message_id)
+                        if c_subj == inc_subj and c_body == inc_body and time_match:
+                            existing = cand
+                            if message_id: 
+                                cand.message_id = message_id
+                                db.commit()
+                            break
+
+                if existing:
+                    continue
                 
-                total_stored += stored_count
-                if stored_count > 0:
-                     # Update status if new emails were found
-                     contact.email_status = "Replied"
-                     contact.draft_status = "Completed"
+                # Store the email
+                conversation = EmailConversation(
+                    hr_contact_id=target_contact.id,
+                    subject=subject,
+                    content=content,
+                    direction=direction,
+                    sent_at=pts,
+                    message_id=message_id
+                )
+                db.add(conversation)
+                
+                if direction == "received":
+                    target_contact.email_status = "Replied"
+                    target_contact.draft_status = "Completed"
+                    # Process intent immediately
+                    HRService._process_intent_for_email(db, target_contact, content)
+                
+                total_stored += 1
             
             if total_stored > 0:
                 db.commit()
         
+            print(f"[IMAP] Bulk sync complete. Scanned {len(all_replies)} emails, stored {total_stored} new.")
             return {"message": f"Fetched and stored {total_stored} new emails", "count": total_stored}
         except Exception as e:
+            import traceback
+            print(f"[IMAP] Bulk sync failed: {str(e)}")
+            traceback.print_exc()
             db.rollback()
             return {"error": str(e), "count": 0}
     @staticmethod
@@ -406,31 +500,23 @@ class HRService:
                     print(f"[CANCELLATION] Cancelled {cancelled_count} reminders for {contact.company}")
                 return
             
-            # Check for rescheduling
+            # Check for rescheduling - No longer need to cancel and re-create manually, 
+            # as ReminderService.create_reminder now handles updates.
             reschedule_info = AIService.detect_rescheduling(content)
-            if reschedule_info['is_rescheduled'] and reschedule_info['new_date']:
-                print(f"[RESCHEDULE] Detected rescheduling from {contact.company} to {reschedule_info['new_date']}")
-                
-                # Cancel old visit reminders
-                cancelled_count = ReminderService.handle_cancellation(db, contact.id, {'is_cancelled': True})
-                
-                # Create new reminder with new date
-                ReminderService.create_reminder(db, ReminderCreate(
-                    contact_id=contact.id,
-                    description=f"Campus Visit - {contact.company} (Rescheduled)",
-                    due_date=reschedule_info['new_date'],
-                    priority="high"
-                ))
-                print(f"[RESCHEDULE] Created new reminder for {contact.company} on {reschedule_info['new_date']}")
-                return
+            rescheduled_date = reschedule_info.get('new_date') if reschedule_info.get('is_rescheduled') else None
             
             # Using AIService to extract intent
             intent = AIService.extract_intent(content, contact.company)
             
-            visit_date = intent.get("visit_date")
+            visit_date = intent.get("visit_date") or rescheduled_date
             deadline = intent.get("deadline")
+            commitments = intent.get("commitments", [])
             
             trigger_date = visit_date or deadline
+            
+            # If visit planned but no date, use "Upcoming" as requested
+            if not trigger_date and "Campus visit planned" in commitments:
+                trigger_date = "Upcoming"
             
             if trigger_date:
                 print(f"[AUTO] Follow-up detected for {contact.company}: {trigger_date}")
@@ -475,6 +561,36 @@ class HRService:
                 ))
         except Exception as e:
             print(f"[AUTO] Intent extraction failed: {str(e)}")
+
+    @staticmethod
+    def sync_all_statuses(db: Session) -> dict:
+        """Update email_status and draft_status for all contacts based on message history."""
+        try:
+            contacts = db.query(HRContact).all()
+            updated_count = 0
+            
+            for contact in contacts:
+                # Get the most recent conversation for this contact
+                latest_conv = db.query(EmailConversation).filter(
+                    EmailConversation.hr_contact_id == contact.id
+                ).order_by(EmailConversation.sent_at.desc()).first()
+                
+                if latest_conv:
+                    # Update status based on conversation history
+                    if latest_conv.direction == "received":
+                        contact.email_status = "Replied"
+                        contact.draft_status = "Completed"
+                    else: # direction == "sent"
+                        contact.email_status = "Awaiting Response"
+                        contact.draft_status = "Completed"
+                    updated_count += 1
+            
+            db.commit()
+            return {"message": f"Synchronized statuses for {updated_count} contacts", "count": updated_count}
+        except Exception as e:
+            db.rollback()
+            print(f"[ERROR] sync_all_statuses failed: {str(e)}")
+            return {"error": str(e)}
 
     @staticmethod
     def generate_template_draft(db: Session, contact_id: int, template_type: str) -> dict:

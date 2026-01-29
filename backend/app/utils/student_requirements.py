@@ -88,8 +88,13 @@ def extract_student_requirements(hr_message: str) -> Dict:
     }
     
     for skill, keywords in skill_keywords.items():
-        if any(keyword in hr_lower for keyword in keywords):
-            skills.append(skill)
+        for keyword in keywords:
+            # Use strict word boundary for all keywords to avoid "ai" matching "email", etc.
+            # Escape the keyword to handle C++ etc safely
+            pattern = r'\b' + re.escape(keyword) + r'\b'
+            if re.search(pattern, hr_lower):
+                skills.append(skill)
+                break
     
     # Extract domain - only if it's actually a student requirement context
     domain = None
@@ -112,9 +117,13 @@ def extract_student_requirements(hr_message: str) -> Dict:
         }
         
         for dom, keywords in domain_keywords.items():
-            if any(keyword in hr_lower for keyword in keywords):
-                domain = dom
-                print(f"[REQUIREMENTS] Found domain '{domain}' using keywords: {keywords}")
+            for keyword in keywords:
+                pattern = r'\b' + re.escape(keyword) + r'\b'
+                if re.search(pattern, hr_lower):
+                    domain = dom
+                    print(f"[REQUIREMENTS] Found domain '{domain}' using keyword: {keyword}")
+                    break
+            if domain:
                 break
     
     result = {

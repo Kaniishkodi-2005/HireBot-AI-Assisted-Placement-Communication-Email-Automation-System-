@@ -88,6 +88,7 @@ def create_app() -> FastAPI:
     from app.models.placement_requirement_model import PlacementRequirement
     from app.models.email_models import EmailConversation, EmailTemplate
     from app.models.reminder_model import Reminder
+    from app.models.access_log_model import AccessLog
     Base.metadata.create_all(bind=engine)
 
     app = FastAPI(

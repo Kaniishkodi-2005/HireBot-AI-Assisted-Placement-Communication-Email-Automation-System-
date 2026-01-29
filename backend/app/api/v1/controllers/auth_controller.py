@@ -1,8 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
+from sqlalchemy import desc
 
 from app.db.session import get_db
 from app.schemas.auth_schema import GoogleLoginRequest, LoginRequest, SignupRequest, TokenResponse, UserInfo, ForgotPasswordRequest, ResetPasswordRequest
+from app.schemas.access_log_schema import AccessLogResponse
 from app.services.auth_service import AuthService
 
 
@@ -18,8 +20,10 @@ def signup(data: SignupRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/login", response_model=TokenResponse)
-def login(data: LoginRequest, db: Session = Depends(get_db)):
+def login(data: LoginRequest, request: Request, db: Session = Depends(get_db)):
     try:
+        # Inject IP address
+        data.ip_address = request.client.host
         token = AuthService.login(db, data)
         if not token:
             raise HTTPException(
@@ -36,7 +40,7 @@ def login(data: LoginRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/google-login", response_model=TokenResponse)
-def google_login(data: GoogleLoginRequest, db: Session = Depends(get_db)):
+def google_login(data: GoogleLoginRequest, request: Request, db: Session = Depends(get_db)):
     import logging
     logger = logging.getLogger(__name__)
     
@@ -44,6 +48,10 @@ def google_login(data: GoogleLoginRequest, db: Session = Depends(get_db)):
         logger.info("AuthController: Received google login request")
         logger.info(f"AuthController: Token length: {len(data.token) if data.token else 0}")
         
+        if data.token:
+             # Inject IP address
+            data.ip_address = request.client.host
+            
         result = AuthService.google_login(db, data)
         
         logger.info("AuthController: Google login service returned success")
@@ -203,6 +211,15 @@ def test_fetch_conversations(contact_id: int, db: Session = Depends(get_db)):
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/logs", response_model=list[AccessLogResponse])
+def get_access_logs(db: Session = Depends(get_db)):
+    """Get recent login logs (admin only)"""
+    from app.models.access_log_model import AccessLog
+    
+    logs = db.query(AccessLog).order_by(desc(AccessLog.timestamp)).limit(100).all()
+    return logs
 
 
 

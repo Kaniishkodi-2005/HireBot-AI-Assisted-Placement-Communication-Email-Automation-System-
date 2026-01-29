@@ -107,6 +107,11 @@ export async function resetAllStatuses() {
   return res.data;
 }
 
+export async function syncAllStatuses() {
+  const res = await http.post('/hr/sync-all-statuses');
+  return res.data;
+}
+
 export async function checkFollowUps() {
   const res = await http.post('/hr/check-followups');
   return res.data;

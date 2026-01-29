@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { fetchHrContacts, uploadHrCsv, generateDraft, fetchConversation, syncConversation, sendEmail, sendFollowUp, checkFollowUps, fetchReceivedEmails, resetAllStatuses, createTemplate, deleteTemplate, testHrParsing, generateAiDraft, createReminder, checkPendingReminders, getHrReplyNotifications, dismissHrReplyNotification, checkForNewHrReplies, createNotificationsForAllReplies, clearAllNotifications } from "../services/hrService";
+import { fetchHrContacts, uploadHrCsv, generateDraft, fetchConversation, syncConversation, sendEmail, sendFollowUp, checkFollowUps, fetchReceivedEmails, resetAllStatuses, syncAllStatuses, createTemplate, deleteTemplate, testHrParsing, generateAiDraft, createReminder, checkPendingReminders, getHrReplyNotifications, dismissHrReplyNotification, checkForNewHrReplies, createNotificationsForAllReplies, clearAllNotifications } from "../services/hrService";
 import Notification from "../components/Notification";
 import EmailConversationModal from "../components/EmailConversationModal";
 import TemplateSelectionModal from "../components/TemplateSelectionModal";
@@ -41,9 +41,16 @@ function HrDashboardPage() {
 
     // Dismiss any notifications for this contact when viewing conversation
     const contactNotifications = hrReplyNotifications.filter(n => n.contact.id === contact.id);
+
+    // Update localStorage to remember these are dismissed even if backend sends them again
+    const dismissedIds = new Set(JSON.parse(localStorage.getItem('dismissedHrNotifications') || '[]'));
+
     for (const notification of contactNotifications) {
       await dismissHrReplyNotification(notification.id);
+      dismissedIds.add(notification.id);
     }
+    localStorage.setItem('dismissedHrNotifications', JSON.stringify([...dismissedIds]));
+
     setHrReplyNotifications(prev => prev.filter(n => n.contact.id !== contact.id));
 
     try {
@@ -330,6 +337,9 @@ function HrDashboardPage() {
   };
 
   useEffect(() => {
+    // Initial sync of statuses to ensure they match conversation history
+    syncAllStatuses().then(() => loadContacts()).catch(err => console.error("Initial status sync failed:", err));
+
     loadContacts();
 
     // Initial reminder count fetch (fix persistence display)
@@ -348,46 +358,62 @@ function HrDashboardPage() {
       setHrReplyNotifications(data.notifications || []);
     }).catch(err => console.error("Initial notification fetch failed:", err));
 
-    // Background polling for new emails, reminders, and HR reply notifications
-    // Poll every 30 seconds for notifications, 5 minutes for emails
-    const notificationInterval = setInterval(() => {
-      console.log('Checking for new HR reply notifications...');
-      checkForNewHrReplies().then(data => {
-        if (data.new_notifications && data.new_notifications.length > 0) {
-          setHrReplyNotifications(prev => {
-            // Filter out duplicates by checking email_id
-            const existingEmailIds = new Set(prev.map(n => n.email_id));
-            const newUniqueNotifications = data.new_notifications.filter(
-              n => !existingEmailIds.has(n.email_id)
-            );
-            return [...prev, ...newUniqueNotifications];
-          });
-        }
-      }).catch(err => console.error('Notification check failed:', err));
-    }, 30 * 1000); // 30 seconds
+    // Background polling using Web Worker (prevents throttling in background tabs)
+    const worker = new Worker('/pollingWorker.js');
+    const isSyncingRef = { current: false };
 
-    const emailInterval = setInterval(() => {
-      console.log('Background auto-sync triggered...');
-      fetchReceivedEmails().then(() => {
-        // Refresh contacts and reminder count after sync
-        loadContacts();
-        return checkPendingReminders();
-      }).then(data => {
-        if (data) {
-          setReminderCount(data.length);
-          // Filter visit reminders for alert emoji
-          const visits = data.filter(r =>
-            r.description.toLowerCase().includes('visit') ||
-            (r.due_date_str && r.due_date_str.toLowerCase().includes('visit'))
-          );
-          setVisitReminders(visits);
+    worker.onmessage = async (e) => {
+      if (e.data === 'tick') {
+        if (isSyncingRef.current) return; // Skip if previous sync is still running
+        isSyncingRef.current = true;
+
+        console.log('Worker tick: Starting background sync...');
+
+        try {
+          // 1. Sync Emails
+          await fetchReceivedEmails();
+
+          // 2. Refresh contacts and reminder count
+          // Don't await loadContacts purely to parallelize, but here we need sequential to be safe? 
+          // loadContacts updates state, so it's async-ish.
+          loadContacts();
+
+          // 3. Check for New Notifications
+          const notifData = await checkForNewHrReplies();
+          if (notifData && notifData.new_notifications && notifData.new_notifications.length > 0) {
+            setHrReplyNotifications(prev => {
+              const existingEmailIds = new Set(prev.map(n => n.email_id));
+              const newUniqueNotifications = notifData.new_notifications.filter(
+                n => !existingEmailIds.has(n.email_id)
+              );
+              return [...prev, ...newUniqueNotifications];
+            });
+          }
+
+          // 4. Update Reminders
+          const reminderData = await checkPendingReminders();
+          if (reminderData) {
+            setReminderCount(reminderData.length);
+            const visits = reminderData.filter(r =>
+              r.description.toLowerCase().includes('visit') ||
+              (r.due_date_str && r.due_date_str.toLowerCase().includes('visit'))
+            );
+            setVisitReminders(visits);
+          }
+        } catch (err) {
+          console.error('Background sync failed:', err);
+        } finally {
+          isSyncingRef.current = false;
         }
-      }).catch(err => console.error('Background auto-sync failed:', err));
-    }, 5 * 60 * 1000); // 5 minutes
+      }
+    };
+
+    // Start the worker
+    worker.postMessage('start');
 
     return () => {
-      clearInterval(notificationInterval);
-      clearInterval(emailInterval);
+      worker.postMessage('stop');
+      worker.terminate();
     };
   }, []);
 
@@ -495,12 +521,6 @@ function HrDashboardPage() {
 
   return (
     <div className="space-y-6 min-h-screen bg-gray-50">
-      {/* HR Reply Notifications - positioned after header */}
-      <HrReplyNotification
-        notifications={hrReplyNotifications}
-        onDismiss={handleDismissNotification}
-      />
-
       {showRemindersPanel && (
         <ReminderNotifications
           onClose={() => setShowRemindersPanel(false)}
@@ -566,7 +586,11 @@ function HrDashboardPage() {
           onBack={handleBackToTemplates}
         />
       )}
-
+      {/* HR Reply Notifications - positioned before header */}
+      <HrReplyNotification
+        notifications={hrReplyNotifications}
+        onDismiss={handleDismissNotification}
+      />
 
       {/* Header Section */}
       <header className="flex items-center justify-between">
@@ -600,6 +624,8 @@ function HrDashboardPage() {
           </button>
         </div>
       </header>
+
+
 
       {/* Summary Cards */}
       <section className="grid md:grid-cols-4 gap-6">

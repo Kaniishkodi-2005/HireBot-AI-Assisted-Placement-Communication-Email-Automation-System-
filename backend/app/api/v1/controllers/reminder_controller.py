@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from datetime import datetime
 from typing import List
 
 from app.db.session import get_db
@@ -23,6 +24,8 @@ def get_pending_reminders(db: Session = Depends(get_db)):
     """Get all pending reminders"""
     try:
         reminders = ReminderService.get_pending_reminders(db)
+        for r in reminders:
+            print(f"[PENDING REMINDER] ID: {r.id}, Desc: {r.description}, Due: {r.due_date}, IsToday: {r.is_today} (UTC Now: {datetime.utcnow().date()})")
         return reminders
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
