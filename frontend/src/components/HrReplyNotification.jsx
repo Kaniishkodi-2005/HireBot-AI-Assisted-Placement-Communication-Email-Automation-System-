@@ -54,15 +54,21 @@ const HrReplyNotification = ({ notifications, onDismiss }) => {
     let hasNewSound = false;
     const nextPlayed = new Set(playedSounds);
 
+    console.log('[DEBUG-AUDIO] Checking notifications:', notifications.length);
+    console.log('[DEBUG-AUDIO] Already played:', [...playedSounds]);
+
     notifications.forEach(notification => {
       // Safety check for notification object
       if (!notification || !notification.id) return;
 
       // If we haven't played sound for this ID *ever*, play it!
       if (!playedSounds.has(notification.id)) {
+        console.log('[DEBUG-AUDIO] New notification found, playing sound:', notification.id);
         playNotificationSound(); // Plays custom .mp3
         nextPlayed.add(notification.id);
         hasNewSound = true;
+      } else {
+        console.log('[DEBUG-AUDIO] Skipping sound for:', notification.id);
       }
     });
 
@@ -89,21 +95,21 @@ const HrReplyNotification = ({ notifications, onDismiss }) => {
   if (visibleNotifications.length === 0) return null;
 
   return (
-    <div className="space-y-2 mb-6">
+    <div className="space-y-2 mb-4">
       {visibleNotifications
         .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
         .map((notification) => (
           <div
             key={notification.id}
-            className="bg-white border-l-4 border-green-600 shadow-sm px-6 py-4 w-full animate-slide-down rounded-xl"
+            className="bg-white border-l-4 border-green-600 shadow-sm px-4 py-3 w-full animate-slide-down rounded-xl"
           >
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-3">
               <div className="flex-shrink-0">
-                <div className="w-12 h-12 bg-green-600 rounded-2xl flex items-center justify-center shadow-sm border-2 border-green-500/20">
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
-                  </svg>
-                </div>
+                <img
+                  src="/assets/images/notification_icon.png"
+                  alt="Email Icon"
+                  className="w-10 h-10 object-contain drop-shadow-sm"
+                />
               </div>
               <div className="flex-1">
                 <div className="flex items-start justify-between">
@@ -118,7 +124,7 @@ const HrReplyNotification = ({ notifications, onDismiss }) => {
 
                   <div className="flex items-start gap-4">
                     <div className="text-right">
-                      <p className="text-xs text-gray-400 font-normal mb-2">
+                      <p className="text-xs text-gray-400 font-normal mb-1">
                         {(() => {
                           try {
                             const date = new Date(notification.timestamp);

@@ -93,7 +93,9 @@ export async function sendFollowUp(contactId) {
 }
 
 export async function fetchReceivedEmails() {
-  const res = await http.post('/hr/fetch-emails');
+  const res = await http.post('/hr/fetch-emails', {}, {
+    timeout: 120000 // 2 minutes for bulk email syncing
+  });
   return res.data;
 }
 

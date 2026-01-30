@@ -71,8 +71,8 @@ build/
 # Logs
 logs/
 *.log
-backend/logs/*.log
-!backend/logs/.gitkeep
+backend/logs/
+frontend/npm-debug.log
 
 # Database
 *.db
@@ -110,8 +110,7 @@ coverage.xml
 *.bak
 *.backup
 
-node_modules/
-frontend/node_modules/
-frontend/node_modules/.vite/
-dist/
-.env
+# Project specific
+backend/debug_fetch.py
+backend/list_contacts.py
+backend/reproduce_issue.py

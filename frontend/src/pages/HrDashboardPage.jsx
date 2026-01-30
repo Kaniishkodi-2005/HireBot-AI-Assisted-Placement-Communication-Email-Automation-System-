@@ -370,38 +370,61 @@ function HrDashboardPage() {
         console.log('Worker tick: Starting background sync...');
 
         try {
-          // 1. Sync Emails
-          await fetchReceivedEmails();
+          // 1. Sync Emails (Independent try-catch)
+          try {
+            await fetchReceivedEmails();
+          } catch (err) {
+            console.warn('Background email sync failed (non-fatal):', err);
+          }
 
-          // 2. Refresh contacts and reminder count
-          // Don't await loadContacts purely to parallelize, but here we need sequential to be safe? 
-          // loadContacts updates state, so it's async-ish.
-          loadContacts();
+          // 2. Refresh contacts (Independent try-catch)
+          try {
+            loadContacts();
+          } catch (err) {
+            console.warn('Background contact refresh failed (non-fatal):', err);
+          }
 
-          // 3. Check for New Notifications
-          const notifData = await checkForNewHrReplies();
-          if (notifData && notifData.new_notifications && notifData.new_notifications.length > 0) {
-            setHrReplyNotifications(prev => {
-              const existingEmailIds = new Set(prev.map(n => n.email_id));
-              const newUniqueNotifications = notifData.new_notifications.filter(
-                n => !existingEmailIds.has(n.email_id)
+          // 3. Check for New Notifications (Independent try-catch)
+          try {
+            const notifData = await checkForNewHrReplies();
+            if (notifData && notifData.new_notifications && notifData.new_notifications.length > 0) {
+              setHrReplyNotifications(prev => {
+                const existingEmailIds = new Set(prev.map(n => n.email_id));
+                const newUniqueNotifications = notifData.new_notifications.filter(
+                  n => !existingEmailIds.has(n.email_id)
+                );
+
+                // Play sound if we have valid new notifications
+                if (newUniqueNotifications.length > 0) {
+                  // The HrReplyNotification component handles sound based on props change
+                  // But we can log here for debugging
+                  console.log('New notifications found:', newUniqueNotifications.length);
+                }
+
+                return [...prev, ...newUniqueNotifications];
+              });
+            }
+          } catch (err) {
+            console.error('Background notification check failed:', err);
+          }
+
+          // 4. Update Reminders (Independent try-catch)
+          try {
+            const reminderData = await checkPendingReminders();
+            if (reminderData) {
+              setReminderCount(reminderData.length);
+              const visits = reminderData.filter(r =>
+                r.description.toLowerCase().includes('visit') ||
+                (r.due_date_str && r.due_date_str.toLowerCase().includes('visit'))
               );
-              return [...prev, ...newUniqueNotifications];
-            });
+              setVisitReminders(visits);
+            }
+          } catch (err) {
+            console.warn('Background reminder check failed (non-fatal):', err);
           }
 
-          // 4. Update Reminders
-          const reminderData = await checkPendingReminders();
-          if (reminderData) {
-            setReminderCount(reminderData.length);
-            const visits = reminderData.filter(r =>
-              r.description.toLowerCase().includes('visit') ||
-              (r.due_date_str && r.due_date_str.toLowerCase().includes('visit'))
-            );
-            setVisitReminders(visits);
-          }
         } catch (err) {
-          console.error('Background sync failed:', err);
+          console.error('Critical background sync error:', err);
         } finally {
           isSyncingRef.current = false;
         }

@@ -193,15 +193,44 @@ class HRService:
                         inc_subj = subject.lower().strip()
                         inc_body = content.lower().strip().replace('\r','').replace('\n','').replace(' ','')
                         
-                        # Match by content AND timestamp (within 2 seconds to allow for minor precision drifts)
+                        # Match by content AND timestamp
                         time_match = False
-                        if cand.sent_at and reply.get("parsed_timestamp"):
-                            time_match = abs((cand.sent_at - reply.get("parsed_timestamp")).total_seconds()) < 2
                         
+                        # Calculate time difference if both have timestamps
+                        time_diff = 999999
+                        if cand.sent_at and reply.get("parsed_timestamp"):
+                            time_diff = abs((cand.sent_at - reply.get("parsed_timestamp")).total_seconds())
+
+                        # For RECEIVED emails, keep strict 2-second window (high precision expected)
+                        if direction == "received":
+                            time_match = time_diff < 5 # Relaxed slightly to 5s
+                        else:
+                            # For SENT emails, allow much larger window (e.g. 10 minutes)
+                            # because local DB time = when we clicked send
+                            # IMAP time = when Gmail finally processed/appended it to Sent folder
+                            time_match = time_diff < 600
+                        
+                        # Match Logic
+                        is_match = False
+                        
+                        # 1. Strong Match: Subject + Body + Time
                         if c_subj == inc_subj and c_body == inc_body and time_match:
+                            is_match = True
+                        
+                        # 2. Sent Email Fallback: Subject + Body (Ignore Time if it's within sensible range or one is missing)
+                        # Sometimes body formatting differs slightly (HTML vs Plain), so we can also check for ID match if we had one
+                        if direction == "sent" and not is_match:
+                             # If subject and body match exactly, and it's within 24 hours, assume it's the same
+                             if c_subj == inc_subj and c_body == inc_body and time_diff < 86400:
+                                 is_match = True
+                             # Partial body match for Sent items (HTML stripping might vary)
+                             elif c_subj == inc_subj and (c_body in inc_body or inc_body in c_body) and time_match:
+                                 is_match = True
+
+                        if is_match:
                             existing = cand
                             if message_id: cand.message_id = message_id
-                            # Sync timestamp
+                            # Sync timestamp from IMAP as it's the "official" time
                             pts = reply.get("parsed_timestamp")
                             if pts: cand.sent_at = pts
                             db.commit()
@@ -439,13 +468,35 @@ class HRService:
                         inc_subj = subject.lower().strip()
                         inc_body = content.lower().strip().replace('\r','').replace('\n','').replace(' ','')
                         
-                        # Match by content AND timestamp (within 2 seconds)
+                        # Match by content AND timestamp
                         time_match = False
+                        
+                        # Calculate time difference
+                        time_diff = 999999
                         if cand.sent_at and pts:
-                            # pts is reply.get("parsed_timestamp") or datetime.utcnow()
-                            time_match = abs((cand.sent_at - pts).total_seconds()) < 2
+                            time_diff = abs((cand.sent_at - pts).total_seconds())
 
+                        if direction == "received":
+                            time_match = time_diff < 5
+                        else:
+                            # Relaxed check for sent items
+                            time_match = time_diff < 600
+                            
+                        # Match Logic
+                        is_match = False
+                        
+                        # 1. Strong Match
                         if c_subj == inc_subj and c_body == inc_body and time_match:
+                            is_match = True
+                            
+                        # 2. Sent Email Fallback
+                        if direction == "sent" and not is_match:
+                             if c_subj == inc_subj and c_body == inc_body and time_diff < 86400:
+                                 is_match = True
+                             elif c_subj == inc_subj and (c_body in inc_body or inc_body in c_body) and time_match:
+                                 is_match = True
+
+                        if is_match:
                             existing = cand
                             if message_id: 
                                 cand.message_id = message_id

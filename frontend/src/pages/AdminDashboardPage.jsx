@@ -335,7 +335,7 @@ function AdminDashboardPage() {
                     {(accessLogs || []).map((log) => (
                       <tr key={log.id} className="hover:bg-gray-50 transition-colors">
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {new Date(log.timestamp + 'Z').toLocaleString()}
+                          {new Date(log.timestamp + 'Z').toLocaleString('en-GB')}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                           {log.email} {/* Changed from log.user_email to log.email based on original LogsTable */}

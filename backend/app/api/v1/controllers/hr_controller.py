@@ -750,16 +750,32 @@ def dismiss_hr_reply_notification(notification_id: str, db: Session = Depends(ge
     """Dismiss a specific HR reply notification and mark email as read"""
     global HR_REPLY_NOTIFICATIONS
     
-    # Find the notification to get the email_id
+    # Try to find the email_id from memory or parse it from the ID string
+    email_id = None
+    
+    # 1. Try memory lookup
     notification = next((n for n in HR_REPLY_NOTIFICATIONS if n["id"] == notification_id), None)
     if notification and "email_id" in notification:
+        email_id = notification["email_id"]
+    
+    # 2. Fallback: Parse from ID string (format: hr_reply_{id})
+    if not email_id and notification_id.startswith("hr_reply_"):
+        try:
+            email_id = int(notification_id.split("hr_reply_")[1])
+        except (ValueError, IndexError):
+            pass
+            
+    if email_id:
         from app.models.email_models import EmailConversation
-        email_record = db.query(EmailConversation).filter(EmailConversation.id == notification["email_id"]).first()
+        email_record = db.query(EmailConversation).filter(EmailConversation.id == email_id).first()
         if email_record:
             email_record.is_read = 1
             db.commit()
             print(f"[NOTIFICATIONS] Marked email {email_record.id} as read via dismissal")
+    else:
+        print(f"[NOTIFICATIONS] Could not determine email_id for dismissal: {notification_id}")
 
+    # Remove from memory list
     HR_REPLY_NOTIFICATIONS = [n for n in HR_REPLY_NOTIFICATIONS if n["id"] != notification_id]
     return {"message": "Notification dismissed and marked as read"}
 
@@ -833,8 +849,13 @@ def check_for_new_hr_replies(db: Session = Depends(get_db)):
                             continue
                         
                         print(f"[NOTIFICATIONS] Creating new notification for {reply.subject}")
+                        # STABLE ID: Use only the email ID (and maybe 'v1' suffix if needed later)
+                        # This ensures that even if server restarts, the ID for this email remains the same
+                        # and the frontend can correctly deduplicate and track "played" state.
+                        notification_id = f"hr_reply_{reply.id}"
+                        
                         notification = {
-                                "id": f"hr_reply_{reply.id}_{int(datetime.utcnow().timestamp())}",
+                                "id": notification_id,
                                 "email_id": reply.id,
                                 "contact": {
                                     "id": contact.id,
@@ -849,7 +870,7 @@ def check_for_new_hr_replies(db: Session = Depends(get_db)):
                         
                         HR_REPLY_NOTIFICATIONS.append(notification)
                         new_notifications.append(notification)
-                        print(f"[NOTIFICATION] Created for {contact.name} from {contact.company} - Email ID: {reply.id}")
+                        print(f"[NOTIFICATION] Created for {contact.name} from {contact.company} - Email ID: {reply.id} - Notification ID: {notification_id}")
                     except Exception as inner_e:
                         print(f"[ERROR] processing reply {reply.id}: {str(inner_e)}")
                         continue
@@ -895,15 +916,17 @@ def force_check_notifications(db: Session = Depends(get_db)):
             if not contact:
                 continue
                 
-            # Check if notification already exists
+            # Check if notification already exists (by email_id OR by stable ID)
+            stable_id = f"hr_reply_{reply.id}"
+            
             existing_notification = next(
-                (n for n in HR_REPLY_NOTIFICATIONS if n.get("email_id") == reply.id),
+                (n for n in HR_REPLY_NOTIFICATIONS if n.get("email_id") == reply.id or n.get("id") == stable_id),
                 None
             )
             
             if not existing_notification:
                 notification = {
-                    "id": f"hr_reply_{reply.id}_{int(datetime.utcnow().timestamp())}",
+                    "id": stable_id,
                     "email_id": reply.id,
                     "contact": {
                         "id": contact.id,
@@ -917,7 +940,7 @@ def force_check_notifications(db: Session = Depends(get_db)):
                 }
                 HR_REPLY_NOTIFICATIONS.append(notification)
                 new_notifications.append(notification)
-                print(f"[FORCE CHECK] Created notification for {contact.name} from {contact.company} - Email ID: {reply.id}")
+                print(f"[FORCE CHECK] Created notification for {contact.name} from {contact.company} - Email ID: {reply.id} - Notification ID: {stable_id}")
         
         return {
             "message": f"Force check created {len(new_notifications)} notifications",
@@ -928,6 +951,9 @@ def force_check_notifications(db: Session = Depends(get_db)):
     except Exception as e:
         print(f"Error in force check: {str(e)}")
         return {"error": str(e), "new_notifications": []}
+
+@router.post("/notifications/create-all")
+def create_notifications_for_all_replies(db: Session = Depends(get_db)):
     """Create notifications for all existing received emails"""
     try:
         from app.models.email_models import EmailConversation
@@ -935,7 +961,11 @@ def force_check_notifications(db: Session = Depends(get_db)):
         
         # Get all received emails
         all_received = db.query(EmailConversation).filter(
-            EmailConversation.direction == "received"
+            EmailConversation.direction == "received",
+             or_(
+                EmailConversation.is_read == 0,
+                EmailConversation.is_read.is_(None)
+            )
         ).order_by(EmailConversation.sent_at.desc()).all()
         
         new_notifications = []
@@ -947,14 +977,15 @@ def force_check_notifications(db: Session = Depends(get_db)):
                 continue
                 
             # Check if notification already exists
+            stable_id = f"hr_reply_{reply.id}"
             existing_notification = next(
-                (n for n in HR_REPLY_NOTIFICATIONS if n.get("email_id") == reply.id),
+                (n for n in HR_REPLY_NOTIFICATIONS if n.get("email_id") == reply.id or n.get("id") == stable_id),
                 None
             )
             
             if not existing_notification:
                 notification = {
-                    "id": f"hr_reply_{reply.id}_{int(datetime.utcnow().timestamp())}",
+                    "id": stable_id,
                     "email_id": reply.id,
                     "contact": {
                         "id": contact.id,
@@ -968,7 +999,7 @@ def force_check_notifications(db: Session = Depends(get_db)):
                 }
                 HR_REPLY_NOTIFICATIONS.append(notification)
                 new_notifications.append(notification)
-                print(f"[NOTIFICATION] Created for {contact.name} from {contact.company} - Email ID: {reply.id}")
+                print(f"[CREATE ALL] Created notification for {contact.name} from {contact.company} - Email ID: {reply.id}")
         
         return {
             "message": f"Created {len(new_notifications)} notifications for all HR replies",
