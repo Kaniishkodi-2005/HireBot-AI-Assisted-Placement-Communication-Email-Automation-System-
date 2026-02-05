@@ -25,7 +25,7 @@ export async function loginRequest(email, password) {
 export async function googleLoginRequest(token) {
   console.log("=== AUTH SERVICE GOOGLE LOGIN ===");
   console.log("X. Making request to backend with token length:", token?.length);
-  
+
   try {
     const res = await authClient.post("/auth/google-login", { token });
     console.log("Y. Backend response received:", res.data);
@@ -37,6 +37,22 @@ export async function googleLoginRequest(token) {
     console.error("Z2. Error response:", error.response);
     console.error("Z3. Error response data:", error.response?.data);
     console.error("Z4. Error response status:", error.response?.status);
+    console.error("Z4. Error response status:", error.response?.status);
     throw error;
   }
+}
+
+export async function sendOtpRequest(email) {
+  const res = await authClient.post("/auth/signup/send-otp", { email });
+  return res.data;
+}
+
+export async function verifyOtpRequest(email, otp) {
+  const res = await authClient.post("/auth/signup/verify-otp", { email, otp });
+  return res.data;
+}
+
+export async function deleteAccount(userId) {
+  const res = await http.delete(`/auth/users/${userId}`);
+  return res.data;
 }

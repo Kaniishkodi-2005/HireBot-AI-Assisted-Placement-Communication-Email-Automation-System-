@@ -49,12 +49,7 @@ function EditStudentsPage() {
 
       // Navigate back after 2 seconds
       setTimeout(() => {
-        const { user } = JSON.parse(localStorage.getItem("hirebot_auth") || "{}");
-        if (user?.role === "admin") {
-          navigate("/dashboard/admin");
-        } else {
-          navigate("/dashboard/students");
-        }
+        navigate("/dashboard/students");
       }, 2000);
     } catch (error) {
       const errorMsg = error.response?.data?.detail || error.message || "Failed to save changes";
@@ -113,17 +108,13 @@ function EditStudentsPage() {
           </p>
         </div>
         <button
-          onClick={() => {
-            const { user } = JSON.parse(localStorage.getItem("hirebot_auth") || "{}");
-            if (user?.role === "admin") {
-              navigate("/dashboard/admin");
-            } else {
-              navigate("/dashboard/students");
-            }
-          }}
-          className="px-4 py-2 rounded-lg font-semibold text-sm shadow-sm transition-all text-white flex items-center gap-2"
-          style={{ background: 'linear-gradient(135deg, #6B64F2 0%, #8E5BF6 50%, #A656F7 100%)' }}
+          onClick={() => navigate("/dashboard/students")}
+          className="px-6 py-2.5 rounded-xl font-semibold text-sm shadow-lg shadow-indigo-500/20 transition-all text-white flex items-center gap-2 transform active:scale-95"
+          style={{ backgroundColor: '#AF69F8' }}
         >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+          </svg>
           Back to Dashboard
         </button>
       </header>
@@ -141,14 +132,7 @@ function EditStudentsPage() {
           data={students}
           columns={columns}
           onSave={handleSave}
-          onCancel={() => {
-            const { user } = JSON.parse(localStorage.getItem("hirebot_auth") || "{}");
-            if (user?.role === "admin") {
-              navigate("/dashboard/admin");
-            } else {
-              navigate("/dashboard/students");
-            }
-          }}
+          onCancel={() => navigate("/dashboard/students")}
           title="Edit Student Data"
         />
       )}

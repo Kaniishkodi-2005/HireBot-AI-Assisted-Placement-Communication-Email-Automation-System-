@@ -163,8 +163,8 @@ function RichTextEditor({ value, onChange, placeholder, className, isConfidentia
         setTimeout(checkFormats, 10); // Check after command execution
       }}
       className={`p-1.5 rounded-[4px] transition-colors min-w-[28px] h-[28px] flex items-center justify-center cursor-pointer ${isActive
-        ? 'bg-gray-200 text-black shadow-inner'
-        : 'text-gray-600 hover:bg-gray-100'
+        ? 'bg-gray-200 dark:bg-slate-700 text-black dark:text-white shadow-inner'
+        : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700'
         }`}
       title={title}
     >
@@ -176,7 +176,7 @@ function RichTextEditor({ value, onChange, placeholder, className, isConfidentia
   );
 
   const ToolbarDivider = () => (
-    <div className="w-px h-5 bg-gray-200 mx-1 self-center"></div>
+    <div className="w-px h-5 bg-gray-200 dark:bg-slate-700 mx-1 self-center"></div>
   );
 
   const handleLink = () => {
@@ -280,8 +280,8 @@ function RichTextEditor({ value, onChange, placeholder, className, isConfidentia
     }
 
     openPicker({
-      clientId: "54602439728-fg5ei9f8n3597jg7juc2vhhh7lnadv1n.apps.googleusercontent.com",
-      developerKey: "AIzaSyAIJOCDO-l9Fx1arCV1Tt95AzT0hwUdFW0",
+      clientId: import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_ID,
+      developerKey: import.meta.env.VITE_GOOGLE_DRIVE_DEVELOPER_KEY,
       viewId: "DOCS", // View all files
       showUploadView: true,
       showUploadFolders: true,
@@ -411,9 +411,15 @@ function RichTextEditor({ value, onChange, placeholder, className, isConfidentia
   };
 
   const handleEditorClick = (e) => {
-    if (e.target.tagName === 'A' || e.target.closest('a')) {
-      // Allow navigation only if Ctrl or Meta (Cmd) key is pressed
-      if (e.ctrlKey || e.metaKey) {
+    const link = e.target.tagName === 'A' ? e.target : e.target.closest('a');
+
+    if (link) {
+      // Allow default navigation if:
+      // 1. Ctrl/Meta key is pressed (for standard links)
+      // 2. The link is inside a contenteditable="false" container (like our Drive attachments)
+      const isContentEditableFalse = link.closest('[contenteditable="false"]');
+
+      if (e.ctrlKey || e.metaKey || isContentEditableFalse) {
         return;
       }
       // Otherwise prevent default navigation to allow editing
@@ -422,32 +428,30 @@ function RichTextEditor({ value, onChange, placeholder, className, isConfidentia
   };
 
   return (
-    <div className={`relative border border-gray-200 rounded-lg overflow-hidden bg-white shadow-sm flex flex-col ${className}`}>
-
-      {/* Top Formatting Toolbar (Toggled by Aa) */}
+    <div className={`relative border border-gray-200 dark:border-slate-700 rounded-lg overflow-hidden bg-white dark:bg-slate-900 shadow-sm flex flex-col transition-colors duration-200 ${className}`}>
 
       {/* Top Formatting Toolbar (Toggled by Aa) */}
       {showFormatting && (
-        <div className="flex flex-wrap items-center gap-0.5 p-2 border-b border-gray-200 bg-[#f9fbfd]">
+        <div className="flex flex-wrap items-center gap-0.5 p-2 border-b border-gray-200 dark:border-slate-700 bg-[#f9fbfd] dark:bg-slate-800">
           {/* Undo / Redo */}
           <ToolbarButton command="undo" title="Undo (Ctrl+Z)">
-            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7v6h6" /><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" /></svg>
+            <svg className="w-4 h-4 text-gray-700 dark:text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7v6h6" /><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" /></svg>
           </ToolbarButton>
           <ToolbarButton command="redo" title="Redo (Ctrl+Y)">
-            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 7v6h-6" /><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 3.7" /></svg>
+            <svg className="w-4 h-4 text-gray-700 dark:text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 7v6h-6" /><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 3.7" /></svg>
           </ToolbarButton>
 
           <ToolbarDivider />
 
           {/* Font Family (Simulated) */}
           <div className="relative group">
-            <button className="flex items-center gap-1 px-2 py-1 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-[4px]">
-              Sans Serif <svg className="w-3 h-3 text-gray-500" viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z" /></svg>
+            <button className="flex items-center gap-1 px-2 py-1 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-[4px]">
+              Sans Serif <svg className="w-3 h-3 text-gray-500 dark:text-gray-400" viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z" /></svg>
             </button>
-            <div className="absolute top-full left-0 mt-1 w-32 bg-white border border-gray-200 rounded shadow-lg hidden group-hover:block z-10 py-1">
-              <button onMouseDown={(e) => { e.preventDefault(); execCommand('fontName', 'Sans-Serif'); }} className="block w-full text-left px-3 py-1 hover:bg-gray-100 text-sm font-sans">Sans Serif</button>
-              <button onMouseDown={(e) => { e.preventDefault(); execCommand('fontName', 'Serif'); }} className="block w-full text-left px-3 py-1 hover:bg-gray-100 text-sm font-serif">Serif</button>
-              <button onMouseDown={(e) => { e.preventDefault(); execCommand('fontName', 'Monospace'); }} className="block w-full text-left px-3 py-1 hover:bg-gray-100 text-sm font-mono">Fixed Width</button>
+            <div className="absolute top-full left-0 mt-1 w-32 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded shadow-lg hidden group-hover:block z-10 py-1">
+              <button onMouseDown={(e) => { e.preventDefault(); execCommand('fontName', 'Sans-Serif'); }} className="block w-full text-left px-3 py-1 hover:bg-gray-100 dark:hover:bg-slate-700 text-sm font-sans text-gray-800 dark:text-gray-200">Sans Serif</button>
+              <button onMouseDown={(e) => { e.preventDefault(); execCommand('fontName', 'Serif'); }} className="block w-full text-left px-3 py-1 hover:bg-gray-100 dark:hover:bg-slate-700 text-sm font-serif text-gray-800 dark:text-gray-200">Serif</button>
+              <button onMouseDown={(e) => { e.preventDefault(); execCommand('fontName', 'Monospace'); }} className="block w-full text-left px-3 py-1 hover:bg-gray-100 dark:hover:bg-slate-700 text-sm font-mono text-gray-800 dark:text-gray-200">Fixed Width</button>
             </div>
           </div>
 
@@ -458,20 +462,20 @@ function RichTextEditor({ value, onChange, placeholder, className, isConfidentia
 
           {/* Basic Formatting */}
           <ToolbarButton command="bold" title="Bold (Ctrl+B)" isActive={activeFormats['bold']}>
-            <span className="font-bold font-serif text-base">B</span>
+            <span className="font-bold font-serif text-base text-gray-700 dark:text-gray-300">B</span>
           </ToolbarButton>
           <ToolbarButton command="italic" title="Italic (Ctrl+I)" isActive={activeFormats['italic']}>
-            <span className="italic font-serif text-base">I</span>
+            <span className="italic font-serif text-base text-gray-700 dark:text-gray-300">I</span>
           </ToolbarButton>
           <ToolbarButton command="underline" title="Underline (Ctrl+U)" isActive={activeFormats['underline']}>
-            <span className="underline font-serif text-base">U</span>
+            <span className="underline font-serif text-base text-gray-700 dark:text-gray-300">U</span>
           </ToolbarButton>
 
           {/* Custom Color Picker Button */}
           <div className="relative">
             <button
               type="button"
-              className="p-1.5 text-gray-600 hover:bg-gray-100 rounded-[4px] transition-colors min-w-[28px] h-[28px] flex items-center justify-center cursor-pointer"
+              className="p-1.5 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-[4px] transition-colors min-w-[28px] h-[28px] flex items-center justify-center cursor-pointer"
               title="Text Color"
               onClick={() => setShowColorPicker(!showColorPicker)}
               onMouseDown={(e) => e.preventDefault()}
@@ -483,7 +487,7 @@ function RichTextEditor({ value, onChange, placeholder, className, isConfidentia
             </button>
 
             {showColorPicker && (
-              <div className="absolute top-full left-0 mt-1 p-2 bg-white border border-gray-200 shadow-xl grid grid-cols-8 gap-1 z-50 w-64 rounded-lg">
+              <div className="absolute top-full left-0 mt-1 p-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 shadow-xl grid grid-cols-8 gap-1 z-50 w-64 rounded-lg">
                 {COLOR_PALETTE.map((c) => (
                   <button
                     key={c}
@@ -493,7 +497,7 @@ function RichTextEditor({ value, onChange, placeholder, className, isConfidentia
                       execCommand('foreColor', c);
                       setShowColorPicker(false);
                     }}
-                    className="w-6 h-6 rounded-full hover:ring-2 hover:ring-offset-1 hover:ring-gray-400 border border-gray-100"
+                    className="w-6 h-6 rounded-full hover:ring-2 hover:ring-offset-1 hover:ring-gray-400 border border-gray-100 dark:border-slate-600"
                     title={c}
                   />
                 ))}
@@ -503,27 +507,27 @@ function RichTextEditor({ value, onChange, placeholder, className, isConfidentia
 
           {/* Strikethrough */}
           <ToolbarButton command="strikeThrough" title="Strikethrough" isActive={activeFormats['strikeThrough']}>
-            <span className="line-through font-serif text-base">S</span>
+            <span className="line-through font-serif text-base text-gray-700 dark:text-gray-300">S</span>
           </ToolbarButton>
 
           <ToolbarDivider />
 
           {/* Alignment */}
           <ToolbarButton command="justifyLeft" title="Align Left" isActive={activeFormats['justifyLeft']}>
-            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="15" y2="12" /><line x1="3" y1="18" x2="18" y2="18" /></svg>
+            <svg className="w-4 h-4 text-gray-700 dark:text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="15" y2="12" /><line x1="3" y1="18" x2="18" y2="18" /></svg>
           </ToolbarButton>
           <ToolbarButton command="justifyCenter" title="Align Center" isActive={activeFormats['justifyCenter']}>
-            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="6" x2="21" y2="6" /><line x1="6" y1="12" x2="18" y2="12" /><line x1="6" y1="18" x2="18" y2="18" /></svg>
+            <svg className="w-4 h-4 text-gray-700 dark:text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="6" x2="21" y2="6" /><line x1="6" y1="12" x2="18" y2="12" /><line x1="6" y1="18" x2="18" y2="18" /></svg>
           </ToolbarButton>
           <ToolbarButton command="justifyRight" title="Align Right" isActive={activeFormats['justifyRight']}>
-            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="6" x2="21" y2="6" /><line x1="9" y1="12" x2="21" y2="12" /><line x1="6" y1="18" x2="21" y2="18" /></svg>
+            <svg className="w-4 h-4 text-gray-700 dark:text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="6" x2="21" y2="6" /><line x1="9" y1="12" x2="21" y2="12" /><line x1="6" y1="18" x2="21" y2="18" /></svg>
           </ToolbarButton>
 
           <ToolbarDivider />
 
           {/* Lists */}
           <ToolbarButton command="insertUnorderedList" title="Bullet List" isActive={activeFormats['insertUnorderedList']}>
-            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+            <svg className="w-5 h-5 text-gray-700 dark:text-gray-300" viewBox="0 0 24 24" fill="currentColor">
               <circle cx="5" cy="7" r="2" />
               <rect x="10" y="6" width="10" height="2" rx="1" />
               <circle cx="5" cy="12" r="2" />
@@ -533,7 +537,7 @@ function RichTextEditor({ value, onChange, placeholder, className, isConfidentia
             </svg>
           </ToolbarButton>
           <ToolbarButton command="insertOrderedList" title="Numbered List" isActive={activeFormats['insertOrderedList']}>
-            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+            <svg className="w-5 h-5 text-gray-700 dark:text-gray-300" viewBox="0 0 24 24" fill="currentColor">
               <path d="M4 6h2v-2h-1v-1h3v3h-2v9h4v2h-6v-2h2v-9zM10 6h10v2h-10v-2zM10 11h10v2h-10v-2zM10 16h10v2h-10v-2z" />
               <text x="3" y="17" fontSize="14" fontWeight="bold" fontFamily="sans-serif">1</text>
               <line x1="10" y1="8" x2="20" y2="8" stroke="currentColor" strokeWidth="2" />
@@ -553,7 +557,7 @@ function RichTextEditor({ value, onChange, placeholder, className, isConfidentia
       <div
         ref={editorRef}
         contentEditable
-        className="flex-1 p-4 outline-none text-sm text-gray-800 leading-relaxed overflow-y-auto [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_a]:text-blue-600 [&_a]:underline"
+        className="flex-1 p-4 outline-none text-sm text-gray-800 dark:text-gray-200 leading-relaxed overflow-y-auto [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_a]:text-blue-600 dark:[&_a]:text-blue-400 [&_a]:underline"
         onInput={handleInputWithCheck}
         onKeyDown={(e) => {
           handleKeyDown(e);
@@ -571,11 +575,11 @@ function RichTextEditor({ value, onChange, placeholder, className, isConfidentia
 
       {/* Attachments Area */}
       {attachments.length > 0 && (
-        <div className="p-2 border-t border-gray-100 bg-white flex flex-col gap-1">
-          <div className="text-xs font-semibold text-gray-500 mb-1">Attachments</div>
+        <div className="p-2 border-t border-gray-100 dark:border-slate-700 bg-white dark:bg-slate-900 flex flex-col gap-1">
+          <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">Attachments</div>
           {attachments.map((file, index) => (
-            <div key={index} className="flex items-center gap-2 group p-1 hover:bg-gray-50 rounded">
-              <div className="flex items-center justify-center w-8 h-8 bg-blue-100 text-blue-600 rounded">
+            <div key={index} className="flex items-center gap-2 group p-1 hover:bg-gray-50 dark:hover:bg-slate-800 rounded">
+              <div className="flex items-center justify-center w-8 h-8 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded">
                 <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
               </div>
               <div className="flex flex-col">
@@ -585,15 +589,15 @@ function RichTextEditor({ value, onChange, placeholder, className, isConfidentia
                     const url = URL.createObjectURL(file);
                     window.open(url, '_blank');
                   }}
-                  className="text-sm font-medium text-blue-700 hover:underline cursor-pointer text-left"
+                  className="text-sm font-medium text-blue-700 dark:text-blue-400 hover:underline cursor-pointer text-left"
                 >
                   {file.name}
                 </button>
-                <span className="text-xs text-gray-500">{(file.size / 1024).toFixed(0)} KB</span>
+                <span className="text-xs text-gray-500 dark:text-gray-400">{(file.size / 1024).toFixed(0)} KB</span>
               </div>
               <button
                 onClick={() => removeAttachment(index)}
-                className="ml-auto text-gray-400 hover:text-red-500 p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                className="ml-auto text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400 p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
                 title="Remove attachment"
               >
                 <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
@@ -604,17 +608,17 @@ function RichTextEditor({ value, onChange, placeholder, className, isConfidentia
       )}
 
       {/* Bottom Action Bar */}
-      <div className="relative flex items-center gap-2 p-2 px-3 border-t border-gray-100 bg-gray-50">
+      <div className="relative flex items-center gap-2 p-2 px-3 border-t border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/50">
 
         {/* Notification Toast (Bottom Center - Professional Blue) */}
         {notification && (
           <div
-            className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-3 px-4 py-2 rounded-lg shadow-xl z-[100] flex items-center gap-3 transition-all duration-300 ease-out border bg-blue-600 text-white border-blue-500 animate-fade-in-up"
+            className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-3 px-4 py-2 rounded-lg shadow-xl z-[100] flex items-center gap-3 transition-all duration-300 ease-out border bg-purple-600 text-white border-purple-500 animate-fade-in-up"
           >
             {notification.type === 'success' ? (
-              <svg className="w-5 h-5 text-blue-100" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /><path d="M12 16v.01" /></svg>
+              <svg className="w-5 h-5 text-purple-100" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /><path d="M12 16v.01" /></svg>
             ) : (
-              <svg className="w-5 h-5 text-blue-100" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 9.9-1" /></svg>
+              <svg className="w-5 h-5 text-purple-100" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 9.9-1" /></svg>
             )}
             <span className="font-medium text-sm tracking-wide">{notification.text}</span>
           </div>
@@ -623,7 +627,7 @@ function RichTextEditor({ value, onChange, placeholder, className, isConfidentia
         {/* Aa - Toggle Formatting */}
         <button
           onClick={() => setShowFormatting(!showFormatting)}
-          className={`p-2 rounded hover:bg-gray-200 text-gray-700 font-medium flex items-center justify-center min-w-[32px] ${showFormatting ? 'bg-gray-200' : ''}`}
+          className={`p-2 rounded hover:bg-gray-200 dark:hover:bg-slate-700 text-gray-700 dark:text-gray-300 font-medium flex items-center justify-center min-w-[32px] ${showFormatting ? 'bg-gray-200 dark:bg-slate-700' : ''}`}
           title="Formatting options"
         >
           <span className="text-lg underline font-serif">A</span>
@@ -633,7 +637,7 @@ function RichTextEditor({ value, onChange, placeholder, className, isConfidentia
         {/* Attach Files */}
         <button
           onClick={handleAttachClick}
-          className="p-2 text-gray-600 hover:bg-gray-200 rounded-full"
+          className="p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-slate-700 rounded-full"
           title="Attach files"
         >
           <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" /></svg>
@@ -641,23 +645,23 @@ function RichTextEditor({ value, onChange, placeholder, className, isConfidentia
         <input type="file" ref={fileInputRef} className="hidden" multiple onChange={handleFileChange} />
 
         {/* Link */}
-        <button className="p-2 text-gray-600 hover:bg-gray-200 rounded-full" title="Insert link" onMouseDown={(e) => { e.preventDefault(); handleLink(); }}>
+        <button className="p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-slate-700 rounded-full" title="Insert link" onMouseDown={(e) => { e.preventDefault(); handleLink(); }}>
           <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></svg>
         </button>
 
         {/* Emoji */}
         <div className="relative">
           <button
-            className="p-2 text-gray-600 hover:bg-gray-200 rounded-full"
+            className="p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-slate-700 rounded-full"
             title="Insert emoji"
             onClick={() => setShowEmojiPicker(!showEmojiPicker)}
           >
             <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><path d="M8 14s1.5 2 4 2 4-2 4-2" /><line x1="9" y1="9" x2="9.01" y2="9" /><line x1="15" y1="9" x2="15.01" y2="9" /></svg>
           </button>
           {showEmojiPicker && (
-            <div className="absolute bottom-full left-0 mb-2 p-2 bg-white border border-gray-200 rounded-lg shadow-xl grid grid-cols-8 gap-1 w-64 z-50">
+            <div className="absolute bottom-full left-0 mb-2 p-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg shadow-xl grid grid-cols-8 gap-1 w-64 z-50">
               {COMMON_EMOJIS.map(emoji => (
-                <button key={emoji} onClick={() => insertEmoji(emoji)} className="text-xl hover:bg-gray-100 p-1 rounded">
+                <button key={emoji} onClick={() => insertEmoji(emoji)} className="text-xl hover:bg-gray-100 dark:hover:bg-slate-700 p-1 rounded">
                   {emoji}
                 </button>
               ))}
@@ -666,13 +670,13 @@ function RichTextEditor({ value, onChange, placeholder, className, isConfidentia
         </div>
 
         {/* Drive */}
-        <button className="p-2 text-gray-600 hover:bg-gray-200 rounded-full" title="Insert files using Drive" onMouseDown={(e) => { e.preventDefault(); handleDriveClick(); }}>
+        <button className="p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-slate-700 rounded-full" title="Insert files using Drive" onMouseDown={(e) => { e.preventDefault(); handleDriveClick(); }}>
           <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L2 19.77h20L12 2zm0 3.3L18.7 18H5.3L12 5.3z" /></svg>
         </button>
 
         {/* Photo */}
         <button
-          className="p-2 text-gray-600 hover:bg-gray-200 rounded-full"
+          className="p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-slate-700 rounded-full"
           title="Insert photo"
           onMouseDown={(e) => { e.preventDefault(); handleImageClick(); }}
         >
@@ -681,7 +685,7 @@ function RichTextEditor({ value, onChange, placeholder, className, isConfidentia
 
         {/* Confidential */}
         <button
-          className={`p-2 rounded-full transition-colors ${isConfidential ? 'bg-blue-100 text-blue-600' : 'text-gray-600 hover:bg-gray-200'}`}
+          className={`p-2 rounded-full transition-colors ${isConfidential ? 'bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-slate-700'}`}
           title="Toggle confidential mode"
           onMouseDown={(e) => { e.preventDefault(); toggleConfidential(); }}
         >
@@ -690,7 +694,7 @@ function RichTextEditor({ value, onChange, placeholder, className, isConfidentia
 
         {/* Signature */}
         <button
-          className="p-2 text-gray-600 hover:bg-gray-200 rounded-full"
+          className="p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-slate-700 rounded-full"
           title="Insert signature"
           onMouseDown={(e) => { e.preventDefault(); insertSignature(); }}
         >

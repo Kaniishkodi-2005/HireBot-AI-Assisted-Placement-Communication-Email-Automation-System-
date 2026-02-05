@@ -651,48 +651,44 @@ class HRService:
 
         templates = {
             "final_year_students": {
-                "subject": f"Placement Opportunity - Final Year Students | {contact.company}",
-                "content": f"""Dear {contact.name or 'Hiring Team'},
- 
- Greetings from the Placement Cell!
- 
- We are pleased to introduce our final year students for placement opportunities at {contact.company}. Our students demonstrate exceptional academic performance and technical proficiency.
- 
- We would appreciate receiving your detailed job requirements to ensure precise candidate matching. This will enable us to shortlist the most suitable candidates for your consideration.
- 
- Next Steps:
- 1. Share job description and requirements
- 2. We provide student profiles within 48 hours
- 3. Coordinate interview schedules as per your convenience
- 
- Looking forward to a successful collaboration.
- 
- Best regards,
- Placement Officer
- University Placement Cell"""
+                "subject": f"Placement Opportunity - Final Year Students",
+                "content": f"""<p>Dear {contact.name or 'Hiring Team'},</p>
+
+<p>Greetings from the Placement Cell!</p>
+
+<p>We are pleased to introduce our final year students for placement opportunities at {contact.company}. Our students demonstrate exceptional academic performance and technical proficiency.</p>
+
+<p>We would appreciate receiving your detailed job requirements to ensure precise candidate matching. This will enable us to shortlist the most suitable candidates for your consideration.</p>
+
+<p>Looking forward to a successful collaboration.</p>
+
+<p>Best regards,<br>
+Placement Cell<br>
+Bannari Amman Institute of Technology</p>"""
+            },
+            "internship_opportunities": {
+                "subject": f"Internship Collaboration Opportunity",
+                "content": f"""<p>Dear {contact.name or 'Hiring Team'},</p>
+
+<p>We hope this email finds you well.</p>
+
+<p>We are writing to explore internship opportunities at {contact.company} for our pre-final year students. Our students are eager to gain practical experience and contribute to your organization.</p>
+
+<p>We would be grateful if you could share details about available internship positions and the application process.</p>
+
+<p>Thank you for your time and consideration.</p>
+
+<p>Best regards,<br>
+Placement Cell<br>
+Bannari Amman Institute of Technology</p>"""
             },
             "follow_up": {
                 "subject": f"Follow-up: Placement Requirements | {contact.company}",
-                "content": f"""Dear {contact.name or 'Team'},
- 
- I hope this email finds you well.
- 
- This is a follow-up regarding our previous communication about placement opportunities at {contact.company}. We remain committed to providing you with qualified candidates.
- 
- To proceed effectively, we kindly request:
- • Detailed job description
- • Required skills and qualifications
- • Number of positions available
- 
- Once we receive these details, we will promptly share relevant student profiles for your review.
- 
- Thank you for your time and consideration.
- 
- Best regards,
- Placement Officer"""
+                "content": f"Dear {contact.name or 'Team'},<br><br>I hope this email finds you well.<br><br>This is a follow-up regarding our previous communication about placement opportunities at {contact.company}. We remain committed to providing you with qualified candidates.<br><br>To proceed effectively, we kindly request:<br>• Detailed job description<br>• Required skills and qualifications<br>• Number of positions available<br><br>Once we receive these details, we will promptly share relevant student profiles for your review.<br><br>Thank you for your time and consideration.<br><br>Best regards,<br>Placement Officer"
             }
         }
         
+        # Handle both final_year_students and internship_opportunities
         template = templates.get(template_type, templates["final_year_students"])
         
         return {

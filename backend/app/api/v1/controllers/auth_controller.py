@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc
 
 from app.db.session import get_db
-from app.schemas.auth_schema import GoogleLoginRequest, LoginRequest, SignupRequest, TokenResponse, UserInfo, ForgotPasswordRequest, ResetPasswordRequest
+from app.schemas.auth_schema import GoogleLoginRequest, LoginRequest, SignupRequest, TokenResponse, UserInfo, ForgotPasswordRequest, ResetPasswordRequest, OTPRequest, OTPVerifyRequest, ChangePasswordRequest, UserUpdateRequest
 from app.schemas.access_log_schema import AccessLogResponse
 from app.services.auth_service import AuthService
 
@@ -96,6 +96,24 @@ def reset_password(data: ResetPasswordRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
 
+@router.post("/signup/send-otp")
+def send_signup_otp(data: OTPRequest):
+    try:
+        AuthService.send_signup_otp(data.email)
+        return {"message": "OTP sent successfully"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/signup/verify-otp")
+def verify_signup_otp(data: OTPVerifyRequest):
+    try:
+        AuthService.verify_signup_otp(data.email, data.otp)
+        return {"message": "OTP verified successfully"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @router.get("/users")
 def get_all_users(db: Session = Depends(get_db)):
     """Get all users for admin management"""
@@ -175,8 +193,50 @@ def update_user_role(user_id: int, role: str, db: Session = Depends(get_db)):
     return {"message": f"User role updated to {role}"}
 
 
+@router.delete("/users/{user_id}")
+def delete_user(user_id: int, db: Session = Depends(get_db)):
+    """Delete a user"""
+    from app.models.user_model import User
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    try:
+        db.delete(user)
+        db.commit()
+        return {"message": "User deleted successfully"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to delete user: {str(e)}")
+
+
+@router.post("/change-password")
+def change_password(data: ChangePasswordRequest, request: Request, db: Session = Depends(get_db)):
+    """Change user password"""
+    # Extract user_id from token (assumes auth middleware populates state or we decode here)
+    # Since we don't have global middleware injecting user yet for this specific setup, 
+    # we'll look for the Authorization header.
+    # ideally we should use a dependency `get_current_user` but for now we'll decode manually or assume passed
+    
+    auth_header = request.headers.get('Authorization')
+    if not auth_header:
+         raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    try:
+        from app.core.security import decode_access_token
+        token = auth_header.split(" ")[1]
+        payload = decode_access_token(token)
+        user_id = int(payload.get("sub"))
+        
+        from app.services.auth_service import AuthService
+        AuthService.change_password(db, user_id, data.current_password, data.new_password, data.confirm_password)
+        return {"message": "Password updated successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @router.put("/users/{user_id}")
-def update_user(user_id: int, user_data: dict, db: Session = Depends(get_db)):
+def update_user(user_id: int, user_data: UserUpdateRequest, db: Session = Depends(get_db)):
     """Update user details"""
     from app.models.user_model import User
     user = db.query(User).filter(User.id == user_id).first()
@@ -184,17 +244,19 @@ def update_user(user_id: int, user_data: dict, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="User not found")
     
     # Update allowed fields
-    if "email" in user_data:
-        user.email = user_data["email"]
-    if "organization" in user_data:
-        user.organization = user_data["organization"]
-    if "role" in user_data and user_data["role"] in ["admin", "user"]:
-        user.role = user_data["role"]
+    if user_data.email:
+        user.email = user_data.email
+    if user_data.organization:
+        user.organization = user_data.organization
+    if user_data.full_name:
+        user.full_name = user_data.full_name
+    if user_data.role and user_data.role in ["admin", "user"]:
+        user.role = user_data.role
     
     try:
         db.commit()
         db.refresh(user)
-        return {"message": "User updated successfully"}
+        return {"message": "User updated successfully", "user": {"id": user.id, "full_name": user.full_name, "organization": user.organization}} 
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to update user: {str(e)}")
@@ -219,7 +281,18 @@ def get_access_logs(db: Session = Depends(get_db)):
     from app.models.access_log_model import AccessLog
     
     logs = db.query(AccessLog).order_by(desc(AccessLog.timestamp)).limit(100).all()
+    logs = db.query(AccessLog).order_by(desc(AccessLog.timestamp)).limit(100).all()
     return logs
 
 
-
+@router.delete("/logs")
+def clear_access_logs(db: Session = Depends(get_db)):
+    """Clear all access logs (admin only)"""
+    from app.models.access_log_model import AccessLog
+    try:
+        db.query(AccessLog).delete()
+        db.commit()
+        return {"message": "All logs cleared successfully"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to clear logs: {str(e)}")

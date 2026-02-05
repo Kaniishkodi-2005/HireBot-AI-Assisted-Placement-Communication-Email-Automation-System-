@@ -15,6 +15,15 @@ export function AuthProvider({ children }) {
     if (stored) {
       try {
         const parsed = JSON.parse(stored);
+
+        // Validation: Verify ID exists
+        if (!parsed.user || !parsed.user.id) {
+          console.warn("Found stale auth data without User ID. Clearing session.");
+          localStorage.removeItem("hirebot_auth");
+          setLoading(false);
+          return;
+        }
+
         console.log("Restored auth from localStorage:", parsed);
         setUser(parsed.user);
         setToken(parsed.token);
@@ -28,9 +37,20 @@ export function AuthProvider({ children }) {
 
   const login = async (email, password) => {
     const res = await loginRequest(email, password);
+    console.log("Login API Response:", res); // Debug log to verify ID presence
+
+    // Safety check
+    if (!res.id) {
+      console.error("CRITICAL: Login response missing User ID!", res);
+      // Fallback or alert? We'll rely on global error handling or just let it fail later, 
+      // but log it clearly.
+    }
+
     const authData = {
       user: {
+        id: res.id,
         email: res.email,
+        full_name: res.full_name,
         role: res.role,
         organization: res.organization
       },
@@ -48,7 +68,9 @@ export function AuthProvider({ children }) {
 
       const authData = {
         user: {
+          id: res.id,
           email: res.email,
+          full_name: res.full_name,
           role: res.role,
           organization: res.organization
         },

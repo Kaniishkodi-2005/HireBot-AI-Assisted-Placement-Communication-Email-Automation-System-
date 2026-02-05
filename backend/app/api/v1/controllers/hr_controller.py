@@ -734,11 +734,27 @@ def analyze_hr_message(request: MessageAnalysisRequest):
 HR_REPLY_NOTIFICATIONS = []
 
 @router.post("/notifications/clear-all")
-def clear_all_notifications():
-    """Clear all existing notifications"""
+def clear_all_notifications(db: Session = Depends(get_db)):
+    """Clear all existing notifications AND mark all unread received emails as read in DB"""
     global HR_REPLY_NOTIFICATIONS
     HR_REPLY_NOTIFICATIONS = []
-    return {"message": "All notifications cleared"}
+    
+    try:
+        from app.models.email_models import EmailConversation
+        # Mark all unread received emails as read
+        updated_count = db.query(EmailConversation).filter(
+            EmailConversation.direction == "received",
+            or_(
+                EmailConversation.is_read == 0,
+                EmailConversation.is_read.is_(None)
+            )
+        ).update({"is_read": 1}, synchronize_session=False)
+        db.commit()
+        print(f"[NOTIFICATIONS] Clear All: Marked {updated_count} emails as read in DB")
+    except Exception as e:
+        print(f"[NOTIFICATIONS] Error marking all as read: {str(e)}")
+
+    return {"message": "All notifications cleared and marked as read"}
 
 @router.get("/notifications")
 def get_hr_reply_notifications():
@@ -805,15 +821,14 @@ def check_for_new_hr_replies(db: Session = Depends(get_db)):
         
         for contact in contacts:
             try:
-                # Check for received emails in the last 60 minutes
                 # STRICT FILTER: Only UNREAD (is_read=0 or None)
-                now = datetime.utcnow()
-                recent_cutoff = now - timedelta(minutes=60)
+                # REMOVED TIME WINDOW: Find ALL unread messages regardless of age
+                # This ensures persistence across server restarts forever until marked read
                 
                 recent_replies = db.query(EmailConversation).filter(
                     EmailConversation.hr_contact_id == contact.id,
                     EmailConversation.direction == "received",
-                    EmailConversation.created_at >= recent_cutoff,
+                    # Removed created_at filter completely
                     or_(
                         EmailConversation.is_read == 0,
                         EmailConversation.is_read.is_(None)

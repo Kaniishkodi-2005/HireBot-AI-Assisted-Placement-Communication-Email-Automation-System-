@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { parseHrReply, sendEmail } from "../services/hrService";
+import { API_BASE_URL } from "../config/apiConfig";
 
 function EmailConversationModal({ contact, onClose, onRefresh }) {
   const [conversations, setConversations] = useState([]);
@@ -73,6 +74,23 @@ function EmailConversationModal({ contact, onClose, onRefresh }) {
     }
   }, [conversations]);
 
+  // Global keyboard listener for confidential content
+  useEffect(() => {
+    const hasConfidential = contact?.conversation?.some(c => c.is_confidential && c.disable_printing);
+
+    if (hasConfidential) {
+      const handleKeyDown = (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') {
+          e.preventDefault();
+          alert('⚠️ Printing is disabled for confidential messages in this conversation.');
+        }
+      };
+
+      window.addEventListener('keydown', handleKeyDown);
+      return () => window.removeEventListener('keydown', handleKeyDown);
+    }
+  }, [contact]);
+
   // Robust Sort
   const sortedConversations = [...conversations].sort((a, b) => {
     const tA = new Date(a.timestamp).getTime();
@@ -122,7 +140,7 @@ function EmailConversationModal({ contact, onClose, onRefresh }) {
 
   const handleVerifyOtp = async (id) => {
     try {
-      const response = await fetch(`http://localhost:8000/hr/conversation/verify-otp/${id}`, {
+      const response = await fetch(`${API_BASE_URL}/hr/conversation/verify-otp/${id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ otp: otpInput })
@@ -141,8 +159,8 @@ function EmailConversationModal({ contact, onClose, onRefresh }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl w-full max-w-4xl h-[85vh] flex flex-col shadow-2xl">
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-[100] flex items-center justify-center p-4">
+      <div className="bg-white dark:bg-slate-800 rounded-xl w-full max-w-4xl h-[85vh] flex flex-col shadow-2xl transition-colors duration-200">
         {/* Professional Header */}
         <div className="px-6 py-5 rounded-t-xl" style={{ background: 'linear-gradient(135deg, #6B64F2 0%, #8E5BF6 50%, #A656F7 100%)' }}>
           <div className="flex items-center justify-between">
@@ -170,10 +188,11 @@ function EmailConversationModal({ contact, onClose, onRefresh }) {
         </div>
 
         {/* Conversation Area */}
-        <div className="flex-1 overflow-y-auto bg-gray-50 p-6 no-print">
+        <div className="flex-1 overflow-y-auto bg-gray-50 dark:bg-slate-900 p-6 no-print transition-colors duration-200">
           <style>{`
             @media print {
               .no-print { display: none !important; }
+              .restricted-content { display: none !important; }
               body { background: white !important; }
             }
             .restricted-content {
@@ -182,11 +201,16 @@ function EmailConversationModal({ contact, onClose, onRefresh }) {
               -moz-user-select: none !important;
               -ms-user-select: none !important;
             }
+            .restricted-content img {
+              pointer-events: none !important;
+              -webkit-user-drag: none !important;
+              user-drag: none !important;
+            }
           `}</style>
 
           {conversations.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-gray-400">
-              <div className="w-20 h-20 bg-gray-200 rounded-full flex items-center justify-center mb-4">
+            <div className="flex flex-col items-center justify-center h-full text-gray-400 dark:text-gray-500">
+              <div className="w-20 h-20 bg-gray-200 dark:bg-slate-800 rounded-full flex items-center justify-center mb-4">
                 <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                 </svg>
@@ -198,7 +222,7 @@ function EmailConversationModal({ contact, onClose, onRefresh }) {
             <div className="space-y-6">
               {/* Statistics info */}
               {conversations.length > 0 && (
-                <div className="bg-blue-50 p-3 rounded text-sm text-blue-800 flex items-center justify-between">
+                <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded text-sm text-blue-800 dark:text-blue-300 flex items-center justify-between border border-blue-100 dark:border-blue-900/50">
                   <span>
                     {conversations.length} {conversations.length === 1 ? 'message' : 'messages'}
                     {' '}({conversations.filter(c => c.direction === 'sent').length} sent, {conversations.filter(c => c.direction === 'received').length} received)
@@ -223,7 +247,7 @@ function EmailConversationModal({ contact, onClose, onRefresh }) {
                   <div key={conv.id || idx} className="space-y-2">
                     {showDate && (
                       <div className="flex items-center justify-center my-6">
-                        <div className="bg-gray-200 text-gray-600 text-xs font-medium px-4 py-1.5 rounded-full">
+                        <div className="bg-gray-200 dark:bg-slate-700 text-gray-600 dark:text-gray-300 text-xs font-medium px-4 py-1.5 rounded-full shadow-sm">
                           {formatDate(conv.timestamp)}
                         </div>
                       </div>
@@ -232,9 +256,9 @@ function EmailConversationModal({ contact, onClose, onRefresh }) {
                     <div className={`flex ${isSent ? 'justify-end' : 'justify-start'}`}>
                       <div className={`flex gap-3 max-w-[75%] ${isSent ? 'flex-row-reverse' : 'flex-row'}`}>
                         {/* Avatar */}
-                        <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center overflow-hidden ${isSent
+                        <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center overflow-hidden shadow-sm ${isSent
                           ? 'bg-purple-600'
-                          : 'bg-gray-300 text-gray-700'
+                          : 'bg-gray-300 dark:bg-slate-600 text-gray-700 dark:text-gray-200'
                           }`}>
                           {isSent ? (
                             <img
@@ -252,15 +276,15 @@ function EmailConversationModal({ contact, onClose, onRefresh }) {
                         </div>
 
                         {/* Message Bubble */}
-                        <div className={`rounded-2xl px-4 py-3 shadow-sm ${rawConv?.disable_printing ? 'no-print' : ''} ${isSent
-                          ? 'bg-purple-100 text-purple-900 border border-purple-200 rounded-br-md'
-                          : 'bg-white text-gray-800 border border-gray-200 rounded-bl-md'
+                        <div className={`rounded-2xl px-4 py-3 shadow-md transition-colors ${rawConv?.disable_printing ? 'no-print' : ''} ${isSent
+                          ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-900 dark:text-purple-100 border border-purple-200 dark:border-purple-800 rounded-br-md'
+                          : 'bg-white dark:bg-slate-800 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-slate-700 rounded-bl-md'
                           }`}>
 
                           {/* Confidential Header */}
                           {isConfidential && (
-                            <div className="flex items-center gap-2 mb-3 pb-2 border-b border-red-100">
-                              <span className="flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase tracking-widest rounded-md bg-red-600 text-white shadow-sm">
+                            <div className="flex items-center gap-2 mb-3 pb-2 border-b border-purple-100 dark:border-purple-900/50">
+                              <span className="flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase tracking-widest rounded-md bg-purple-600 text-white shadow-sm">
                                 <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                                   <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
                                   <path d="M7 11V7a5 5 0 0 1 10 0v4" />
@@ -268,28 +292,28 @@ function EmailConversationModal({ contact, onClose, onRefresh }) {
                                 Confidential
                               </span>
                               {isExpired && (
-                                <span className="text-[10px] font-bold text-red-700 bg-red-100 px-2 py-1 rounded-md uppercase tracking-tight">Expired Content</span>
+                                <span className="text-[10px] font-bold text-purple-700 dark:text-purple-400 bg-purple-100 dark:bg-purple-900/20 px-2 py-1 rounded-md uppercase tracking-tight">Expired Content</span>
                               )}
                               {!isExpired && rawConv?.expires_at && (
-                                <span className="text-[10px] text-gray-500 font-medium">Expires: {new Date(rawConv.expires_at).toLocaleDateString()}</span>
+                                <span className="text-[10px] text-gray-500 dark:text-gray-400 font-medium">Expires: {new Date(rawConv.expires_at).toLocaleDateString()}</span>
                               )}
                             </div>
                           )}
 
                           {/* Subject */}
                           {conv.subject && (
-                            <div className={`text-sm font-bold mb-2 ${isSent ? 'text-purple-700' : 'text-gray-700'}`}>
+                            <div className={`text-sm font-bold mb-2 ${isSent ? 'text-purple-700 dark:text-purple-300' : 'text-gray-700 dark:text-gray-300'}`}>
                               {conv.subject}
                             </div>
                           )}
 
                           {/* Message Content */}
                           {requireOtp && !isExpired ? (
-                            <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg flex flex-col items-center gap-3 w-full min-w-[300px]">
-                              <div className="w-10 h-10 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center">
+                            <div className="p-4 bg-gray-50 dark:bg-slate-900/50 border border-gray-200 dark:border-slate-700 rounded-lg flex flex-col items-center gap-3 w-full min-w-[300px]">
+                              <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-full flex items-center justify-center">
                                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} /></svg>
                               </div>
-                              <p className="text-xs font-semibold text-gray-600 text-center">Identity Verification Required</p>
+                              <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 text-center">Identity Verification Required</p>
 
                               {verifyingId === conv.id ? (
                                 <div className="space-y-3 w-full">
@@ -299,10 +323,10 @@ function EmailConversationModal({ contact, onClose, onRefresh }) {
                                     maxLength={6}
                                     value={otpInput}
                                     onChange={(e) => setOtpInput(e.target.value)}
-                                    className="w-full text-center tracking-[0.5em] text-lg font-bold border rounded-md py-2 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    className="w-full text-center tracking-[0.5em] text-lg font-bold border rounded-md py-2 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-slate-800 dark:border-slate-600 dark:text-white"
                                     autoFocus
                                   />
-                                  {otpError && <p className="text-[10px] text-red-600 text-center">{otpError}</p>}
+                                  {otpError && <p className="text-[10px] text-red-600 dark:text-red-400 text-center">{otpError}</p>}
                                   <div className="flex gap-2">
                                     <button
                                       onClick={() => handleVerifyOtp(conv.id)}
@@ -312,7 +336,7 @@ function EmailConversationModal({ contact, onClose, onRefresh }) {
                                     </button>
                                     <button
                                       onClick={() => { setVerifyingId(null); setOtpInput(""); setOtpError(""); }}
-                                      className="px-4 border rounded-md text-xs"
+                                      className="px-4 border dark:border-slate-600 rounded-md text-xs dark:text-gray-300"
                                     >
                                       Cancel
                                     </button>
@@ -329,9 +353,24 @@ function EmailConversationModal({ contact, onClose, onRefresh }) {
                             </div>
                           ) : (
                             <div
-                              className={`text-sm leading-relaxed prose prose-sm max-w-none email-content ${rawConv?.disable_copying ? 'restricted-content' : ''}`}
+                              className={`text-sm leading-relaxed prose prose-sm max-w-none email-content ${rawConv?.disable_copying ? 'restricted-content' : ''} ${isSent ? 'dark:text-purple-100' : 'dark:text-gray-200'}`}
                               dangerouslySetInnerHTML={{ __html: displayContent || 'No content available' }}
                               onContextMenu={rawConv?.disable_copying ? (e) => e.preventDefault() : undefined}
+                              onCopy={rawConv?.disable_copying ? (e) => { e.preventDefault(); alert('⚠️ Copying is disabled for this confidential message.'); } : undefined}
+                              onCut={rawConv?.disable_copying ? (e) => { e.preventDefault(); alert('⚠️ Cutting is disabled for this confidential message.'); } : undefined}
+                              onDragStart={rawConv?.disable_downloading ? (e) => e.preventDefault() : undefined}
+                              onKeyDown={rawConv?.disable_copying || rawConv?.disable_printing ? (e) => {
+                                // Block Ctrl+C, Ctrl+A, Ctrl+X for copying
+                                if (rawConv?.disable_copying && (e.ctrlKey || e.metaKey) && ['c', 'a', 'x'].includes(e.key.toLowerCase())) {
+                                  e.preventDefault();
+                                  alert('⚠️ This action is disabled for confidential content.');
+                                }
+                                // Block Ctrl+P for printing
+                                if (rawConv?.disable_printing && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') {
+                                  e.preventDefault();
+                                  alert('⚠️ Printing is disabled for this confidential message.');
+                                }
+                              } : undefined}
                               style={{
                                 wordBreak: 'break-word',
                                 overflowWrap: 'break-word'
@@ -347,10 +386,13 @@ function EmailConversationModal({ contact, onClose, onRefresh }) {
                               border-radius: 8px;
                               margin: 8px 0;
                             }
+                            .dark .email-content a {
+                              color: #a855f7;
+                            }
                           `}} />
 
                           {/* Timestamp */}
-                          <div className={`text-xs mt-3 pt-2 border-t flex items-center justify-between ${isSent ? 'text-purple-600 border-purple-200' : 'text-gray-500 border-gray-100'
+                          <div className={`text-xs mt-3 pt-2 border-t flex items-center justify-between ${isSent ? 'text-purple-600 dark:text-purple-300 border-purple-200 dark:border-purple-800' : 'text-gray-500 dark:text-gray-400 border-gray-100 dark:border-slate-700'
                             }`}>
                             <span>{formatTime(conv.timestamp)}</span>
                             {isSent && <span className="flex items-center gap-1 opacity-70"><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg> Delivered</span>}

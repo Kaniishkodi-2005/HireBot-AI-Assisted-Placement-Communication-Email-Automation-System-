@@ -61,55 +61,55 @@ function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-hb-bg px-4">
-      <div className="w-full max-w-md bg-hb-card rounded-xl shadow-xl p-8 space-y-6 border border-gray-200">
+    <div className="min-h-screen flex items-center justify-center bg-hb-bg dark:bg-slate-900 px-4 py-8 transition-colors duration-200">
+      <div className="w-full max-w-md bg-hb-card dark:bg-slate-800 rounded-2xl shadow-xl p-8 space-y-6 border border-gray-100 dark:border-slate-700 transition-all duration-300">
         <div className="text-center">
           <div className="flex items-center justify-center gap-3 mb-3">
             <img src="/hirebot-logo.jpg" alt="HireBot" className="w-12 h-12 rounded-full shadow-md object-cover" />
-            <h1 className="text-4xl font-black text-gray-900" style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}>HireBot</h1>
+            <h1 className="text-4xl font-black text-gray-900 dark:text-white" style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}>HireBot</h1>
           </div>
-          <p className="text-sm text-gray-600">AI-Assisted Placement Communication & Shortlisting System</p>
+          <p className="text-sm text-gray-600 dark:text-gray-400 font-medium">AI-Assisted Placement Communication & Email Automation System</p>
         </div>
 
         <div>
-          <h2 className="text-2xl font-bold text-center text-gray-900 mb-1">Welcome Back</h2>
-          <p className="text-xs text-center text-gray-600">Sign in to access your dashboard</p>
+          <h2 className="text-2xl font-bold text-center text-gray-900 dark:text-white mb-1">Welcome Back</h2>
+          <p className="text-xs text-center text-gray-600 dark:text-gray-400">Sign in to access your dashboard</p>
         </div>
 
         {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-            <p className="text-red-600 text-sm text-center">{error}</p>
+          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3">
+            <p className="text-red-600 dark:text-red-400 text-sm text-center">{error}</p>
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
-            <label className="block text-sm font-medium mb-2 text-gray-700">Email Address</label>
+            <label className="block text-sm font-semibold mb-1.5 ml-1 text-gray-700 dark:text-gray-300">Email Address</label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-lg bg-white border border-gray-300 px-4 py-3 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#6B64F2] focus:border-transparent"
+              className="w-full rounded-lg bg-white dark:bg-slate-900 border border-gray-300 dark:border-slate-600 px-4 py-3 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-0 focus:border-[#AF69F8] dark:focus:border-[#AF69F8] transition-colors"
               placeholder="Enter your email"
               required
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-2 text-gray-700">Password</label>
+            <label className="block text-sm font-semibold mb-1.5 ml-1 text-gray-700 dark:text-gray-300">Password</label>
             <div className="relative">
               <input
                 type={showPassword ? "text" : "password"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full rounded-lg bg-white border border-gray-300 px-4 py-3 pr-12 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#6B64F2] focus:border-transparent"
+                className="w-full rounded-lg bg-white dark:bg-slate-900 border border-gray-300 dark:border-slate-600 px-4 py-3 pr-12 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-0 focus:border-[#AF69F8] dark:focus:border-[#AF69F8] transition-colors"
                 placeholder="Enter your password"
                 required
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
               >
                 {showPassword ? (
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -127,8 +127,8 @@ function LoginPage() {
 
           <button
             type="submit"
-            className="w-full rounded-lg px-4 py-3 text-sm font-semibold text-white hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 transition-all shadow-md"
-            style={{ background: 'linear-gradient(135deg, #6B64F2 0%, #8E5BF6 50%, #A656F7 100%)' }}
+            className="w-full rounded-lg px-4 py-3 text-sm font-semibold text-white active:scale-[0.98] transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 focus:outline-none"
+            style={{ backgroundColor: '#AF69F8' }}
           >
             Log In
           </button>
@@ -136,10 +136,10 @@ function LoginPage() {
 
         <div className="relative">
           <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-gray-200"></div>
+            <div className="w-full border-t border-gray-200 dark:border-slate-700"></div>
           </div>
           <div className="relative flex justify-center text-sm">
-            <span className="px-2 bg-hb-card text-gray-500">Or continue with</span>
+            <span className="px-2 bg-hb-card dark:bg-slate-800 text-gray-500 dark:text-gray-400 transition-colors">Or continue with</span>
           </div>
         </div>
 
@@ -147,8 +147,8 @@ function LoginPage() {
           {/* Custom Styled Button */}
           <button
             type="button"
-            className="w-[60%] mx-auto flex items-center justify-between px-1 py-1 rounded-full shadow-md hover:opacity-95 transition-all text-white relative"
-            style={{ background: 'linear-gradient(135deg, #6B64F2 0%, #8E5BF6 50%, #A656F7 100%)', height: '40px' }}
+            className="w-[60%] mx-auto flex items-center justify-between px-1 py-1 rounded-full shadow-md transition-all text-white relative"
+            style={{ backgroundColor: '#AF69F8', height: '40px' }}
           >
             <div className="bg-white rounded-full h-full aspect-square flex items-center justify-center p-2">
               <svg className="w-4 h-4" viewBox="0 0 24 24">
@@ -161,7 +161,7 @@ function LoginPage() {
             <span className="flex-1 text-center font-medium pr-8 text-sm">Sign in with Google</span>
           </button>
 
-          {/* Invisible Google Login Button Overlay */}
+          {/* Invisible Google Login Button Overlay - Left unchanged */}
           <div className="absolute inset-0 opacity-0 overflow-hidden rounded-full">
             <GoogleLogin
               onSuccess={async (credentialResponse) => {
@@ -190,10 +190,10 @@ function LoginPage() {
         </div>
 
         <div className="flex justify-between items-center text-sm">
-          <Link to="/forgot-password" className="text-purple-600 hover:text-purple-700 hover:underline">
+          <Link to="/forgot-password" className="text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 hover:underline transition-colors">
             Forgot Password?
           </Link>
-          <Link to="/signup" className="text-purple-600 hover:text-purple-700 hover:underline">
+          <Link to="/signup" className="text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 hover:underline transition-colors">
             Sign Up
           </Link>
         </div>

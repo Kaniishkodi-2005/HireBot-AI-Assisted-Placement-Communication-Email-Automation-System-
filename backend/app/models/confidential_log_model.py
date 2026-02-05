@@ -3,6 +3,7 @@ Confidential Access Logging Model
 Tracks access to confidential emails for audit purposes
 """
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
+from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.db.base import Base
 from datetime import datetime
@@ -18,3 +19,5 @@ class ConfidentialAccessLog(Base):
     accessed_at = Column(DateTime, default=datetime.utcnow)
     action = Column(String(50), nullable=False)  # e.g., "VIEW", "BLOCKED"
     ip_address = Column(String(45), nullable=True)  # Support IPv6
+
+    user = relationship("User", back_populates="confidential_logs")

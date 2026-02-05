@@ -5,6 +5,7 @@ from pydantic import BaseModel, EmailStr, constr
 
 
 class SignupRequest(BaseModel):
+    full_name: str
     email: EmailStr
     password: constr(min_length=8)
     confirm_password: constr(min_length=8)
@@ -32,17 +33,42 @@ class ResetPasswordRequest(BaseModel):
     new_password: constr(min_length=6)
 
 
+class OTPRequest(BaseModel):
+    email: EmailStr
+
+
+class OTPVerifyRequest(BaseModel):
+    email: EmailStr
+    otp: str
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: constr(min_length=8)
+    confirm_password: constr(min_length=8)
+
+
+class UserUpdateRequest(BaseModel):
+    email: Optional[EmailStr] = None
+    full_name: Optional[str] = None
+    organization: Optional[str] = None
+    role: Optional[str] = None
+
+
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
+    id: int
     role: str
     email: EmailStr
+    full_name: Optional[str] = None
     organization: str
 
 
 class UserInfo(BaseModel):
     id: int
     email: EmailStr
+    full_name: Optional[str] = None
     organization: str
     role: str
     is_active: bool

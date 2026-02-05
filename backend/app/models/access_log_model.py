@@ -14,7 +14,7 @@ class AccessLog(Base):
     user_agent = Column(String(500), nullable=True)
     timestamp = Column(DateTime, default=datetime.utcnow)
 
-    user = relationship("User", backref="access_logs")
+    user = relationship("User", back_populates="access_logs")
 
     @property
     def role(self):

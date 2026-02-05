@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/authContext";
 import AppLayout from "./layouts/AppLayout";
@@ -9,6 +10,7 @@ import StudentDashboardPage from "./pages/StudentDashboardPage";
 import AdminDashboardPage from "./pages/AdminDashboardPage";
 import EditStudentsPage from "./pages/EditStudentsPage";
 import EditHrContactsPage from "./pages/EditHrContactsPage";
+import SettingsPage from "./pages/SettingsPage";
 
 // Protected route wrapper for role-based access
 function ProtectedRoute({ children, allowedRoles }) {
@@ -49,7 +51,7 @@ function AppRoutes() {
         <Route
           path="/dashboard/hr"
           element={
-            <ProtectedRoute allowedRoles={["user"]}>
+            <ProtectedRoute allowedRoles={["user", "admin"]}>
               <HrDashboardPage />
             </ProtectedRoute>
           }
@@ -57,7 +59,7 @@ function AppRoutes() {
         <Route
           path="/dashboard/students"
           element={
-            <ProtectedRoute allowedRoles={["user"]}>
+            <ProtectedRoute allowedRoles={["user", "admin"]}>
               <StudentDashboardPage />
             </ProtectedRoute>
           }
@@ -78,6 +80,14 @@ function AppRoutes() {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/settings"
+          element={
+            <ProtectedRoute allowedRoles={["user", "admin"]}>
+              <SettingsPage />
+            </ProtectedRoute>
+          }
+        />
 
         {/* Admin route - accessible only to "admin" role */}
         <Route
@@ -94,6 +104,22 @@ function AppRoutes() {
 }
 
 function App() {
+  // Initialize global theme
+  useEffect(() => {
+    const storedTheme = localStorage.getItem('theme') || 'light';
+    const root = window.document.documentElement;
+
+    // Remove both potential classes to start fresh
+    root.classList.remove('light', 'dark');
+
+    if (storedTheme === 'system') {
+      const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      root.classList.add(systemTheme);
+    } else {
+      root.classList.add(storedTheme);
+    }
+  }, []);
+
   return (
     <AuthProvider>
       <AppRoutes />

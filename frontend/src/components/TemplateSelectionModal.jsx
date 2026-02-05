@@ -55,17 +55,17 @@ function TemplateSelectionModal({ contact, onClose, onTemplateSelect, onCreateTe
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl w-full max-w-md shadow-xl">
-        <div className="p-6 border-b border-slate-200">
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-[100] flex items-center justify-center p-4">
+      <div className="bg-white dark:bg-slate-800 rounded-xl w-full max-w-md shadow-xl transition-colors duration-200">
+        <div className="p-6 border-b border-slate-200 dark:border-slate-700">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-lg font-bold text-slate-800">Select Email Template</h3>
-              <p className="text-sm text-slate-500 mt-1">Choose a template for {contact?.company}</p>
+              <h3 className="text-lg font-bold text-slate-800 dark:text-white">Select Email Template</h3>
+              <p className="text-sm text-slate-500 dark:text-gray-400 mt-1">Choose a template for {contact?.company}</p>
             </div>
             <button
               onClick={onClose}
-              className="text-slate-400 hover:text-slate-600 text-xl"
+              className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 text-xl"
             >
               ×
             </button>
@@ -79,15 +79,15 @@ function TemplateSelectionModal({ contact, onClose, onTemplateSelect, onCreateTe
               onClick={() => handleTemplateSelect(template)}
               disabled={loading}
               className={`w-full text-left p-4 rounded-lg border transition-all ${selectedTemplate === template.id
-                  ? "border-purple-500 bg-purple-50"
-                  : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+                ? "border-purple-500 bg-purple-50 dark:bg-purple-900/20 dark:border-purple-400"
+                : "border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700/50"
                 } ${loading ? "opacity-50 cursor-not-allowed" : ""}`}
             >
               <div className="flex items-start gap-3">
                 <span className="text-2xl">{template.icon}</span>
                 <div className="flex-1">
-                  <h4 className="font-semibold text-slate-800 text-sm">{template.title}</h4>
-                  <p className="text-xs text-slate-500 mt-1">{template.description}</p>
+                  <h4 className="font-semibold text-slate-800 dark:text-white text-sm">{template.title}</h4>
+                  <p className="text-xs text-slate-500 dark:text-gray-400 mt-1">{template.description}</p>
                 </div>
                 {loading && selectedTemplate === template.id && (
                   <div className="animate-spin w-4 h-4 border-2 border-purple-500 border-t-transparent rounded-full"></div>
@@ -98,23 +98,23 @@ function TemplateSelectionModal({ contact, onClose, onTemplateSelect, onCreateTe
 
           {customTemplates.length > 0 && (
             <>
-              <div className="border-t border-slate-200 pt-3 mt-4">
-                <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-3">Custom Templates</p>
+              <div className="border-t border-slate-200 dark:border-slate-700 pt-3 mt-4">
+                <p className="text-xs text-slate-500 dark:text-gray-400 font-semibold uppercase tracking-wider mb-3">Custom Templates</p>
                 {customTemplates.map((template) => (
                   <div key={`custom-${template.id}`} className="relative">
                     <button
                       onClick={() => handleTemplateSelect({ id: `custom-${template.id}`, ...template })}
                       disabled={loading}
                       className={`w-full text-left p-4 rounded-lg border transition-all mb-2 ${selectedTemplate === `custom-${template.id}`
-                          ? "border-purple-500 bg-purple-50"
-                          : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+                        ? "border-purple-500 bg-purple-50 dark:bg-purple-900/20 dark:border-purple-400"
+                        : "border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700/50"
                         } ${loading ? "opacity-50 cursor-not-allowed" : ""}`}
                     >
                       <div className="flex items-start gap-3">
                         <span className="text-2xl">📝</span>
                         <div className="flex-1">
-                          <h4 className="font-semibold text-purple-600 text-sm">{template.name}</h4>
-                          <p className="text-xs text-slate-500 mt-1">{template.subject}</p>
+                          <h4 className="font-semibold text-purple-600 dark:text-purple-400 text-sm">{template.name}</h4>
+                          <p className="text-xs text-slate-500 dark:text-gray-400 mt-1">{template.subject}</p>
                         </div>
                         {loading && selectedTemplate === `custom-${template.id}` && (
                           <div className="animate-spin w-4 h-4 border-2 border-purple-500 border-t-transparent rounded-full"></div>
@@ -129,7 +129,7 @@ function TemplateSelectionModal({ contact, onClose, onTemplateSelect, onCreateTe
                           loadCustomTemplates(); // Refresh the list
                         }
                       }}
-                      className="absolute top-1/2 right-2 transform -translate-y-1/2 text-red-500 hover:text-red-700 p-1"
+                      className="absolute top-1/2 right-2 transform -translate-y-1/2 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 p-1"
                       title="Delete template"
                     >
                       <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
@@ -142,25 +142,25 @@ function TemplateSelectionModal({ contact, onClose, onTemplateSelect, onCreateTe
             </>
           )}
 
-          <div className="border-t border-slate-200 pt-3 mt-4">
+          <div className="border-t border-slate-200 dark:border-slate-700 pt-3 mt-4">
             <button
               onClick={onCreateTemplate}
               disabled={loading}
-              className="w-full text-left p-4 rounded-lg border border-dashed border-slate-300 hover:border-purple-400 hover:bg-purple-50 transition-all"
+              className="w-full text-left p-4 rounded-lg border border-dashed border-slate-300 dark:border-slate-600 hover:border-purple-400 dark:hover:border-purple-500 hover:bg-purple-50 dark:hover:bg-slate-700/50 transition-all"
             >
               <div className="flex items-start gap-3">
                 <span className="text-2xl">➕</span>
                 <div className="flex-1">
-                  <h4 className="font-semibold text-purple-600 text-sm">Create New Template</h4>
-                  <p className="text-xs text-slate-500 mt-1">Design a custom email template</p>
+                  <h4 className="font-semibold text-purple-600 dark:text-purple-400 text-sm">Create New Template</h4>
+                  <p className="text-xs text-slate-500 dark:text-gray-400 mt-1">Design a custom email template</p>
                 </div>
               </div>
             </button>
           </div>
         </div>
 
-        <div className="p-6 border-t border-slate-200 bg-slate-50 rounded-b-xl">
-          <p className="text-xs text-slate-500 text-center">
+        <div className="p-6 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 rounded-b-xl">
+          <p className="text-xs text-slate-500 dark:text-gray-400 text-center">
             🤖 HireBot AI assists with professional communication - Human approval ensures quality
           </p>
         </div>

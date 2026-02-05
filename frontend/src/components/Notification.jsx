@@ -10,8 +10,22 @@ function Notification({ message, type = "success", onClose, duration = 8000 }) {
     }
   }, [duration, onClose]);
 
-  const bgColor = type === "success" ? "bg-green-600" : "bg-red-600";
-  const icon = type === "success" ? "✅" : "❌";
+  const getNotificationStyle = () => {
+    switch (type) {
+      case "success":
+        return { bgColor: "bg-green-600", icon: "✅" };
+      case "error":
+        return { bgColor: "bg-red-600", icon: "❌" };
+      case "warning":
+        return { bgColor: "bg-yellow-500", icon: "⚠️" };
+      case "info":
+        return { bgColor: "bg-blue-600", icon: "ℹ️" };
+      default:
+        return { bgColor: "bg-gray-600", icon: "ℹ️" };
+    }
+  };
+
+  const { bgColor, icon } = getNotificationStyle();
 
   return (
     <div className="fixed top-4 right-4 z-50 animate-slide-in">

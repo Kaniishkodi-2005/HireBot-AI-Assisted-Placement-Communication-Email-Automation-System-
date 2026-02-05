@@ -83,12 +83,12 @@ Generate ONLY the email body. Do not include subject line or metadata."""
         model: str = None
     ) -> Dict[str, str]:
         """
-        Generate email content using AI and a template
+        Generate email content using predefined templates
         
         Args:
             template_id: ID of the template to use
-            context_data: Dictionary with context variables (company_name, total_students, etc.)
-            model: Ollama model to use (defaults to settings.OLLAMA_MODEL)
+            context_data: Dictionary with context variables (company_name, hr_name, etc.)
+            model: Not used anymore (kept for backward compatibility)
             
         Returns:
             Dictionary with 'subject' and 'body' keys
@@ -96,52 +96,66 @@ Generate ONLY the email body. Do not include subject line or metadata."""
         if template_id not in EmailTemplateService.TEMPLATES:
             raise ValueError(f"Template '{template_id}' not found")
         
-        template = EmailTemplateService.TEMPLATES[template_id]
+        # Get company name and HR name from context
+        company_name = context_data.get('company_name', 'your organization')
+        hr_name = context_data.get('hr_name', 'Sir/Madam')
         
-        # Format the system prompt with context data
-        try:
-            formatted_prompt = template["system_prompt"].format(**context_data)
-        except KeyError as e:
-            raise ValueError(f"Missing required context data: {e}")
-        
-        # Call Ollama API
-        model_name = model or settings.OLLAMA_MODEL
-        ollama_url = f"{settings.OLLAMA_BASE_URL}/api/generate"
-        
-        payload = {
-            "model": model_name,
-            "prompt": formatted_prompt,
-            "stream": False,
-            "options": {
-                "temperature": 0.7,
-                "top_p": 0.9,
-                "max_tokens": 500
-            }
+        # Define static email bodies with proper HTML formatting
+        email_bodies = {
+            "final_year_students": f"""<p>Dear {hr_name},</p>
+
+<p>Greetings from the Placement Cell!</p>
+
+<p>We are pleased to introduce our final year students for placement opportunities at {company_name}. Our students demonstrate exceptional academic performance and technical proficiency.</p>
+
+<p>We would appreciate receiving your detailed job requirements to ensure precise candidate matching. This will enable us to shortlist the most suitable candidates for your consideration.</p>
+
+<p><strong>Next Steps:</strong></p>
+<ol>
+<li>Share job description and requirements</li>
+<li>We provide student profiles within 48 hours</li>
+<li>Coordinate interview schedules as per your convenience</li>
+</ol>
+
+<p>Looking forward to a successful collaboration.</p>
+
+<p>Best regards,<br>
+Placement Officer<br>
+University Placement Cell</p>""",
+            
+            "internship_opportunities": f"""<p>Dear {hr_name},</p>
+
+<p>We hope this email finds you well.</p>
+
+<p>We are writing to explore internship opportunities at {company_name} for our pre-final year students. Our students are eager to gain practical experience and contribute to your organization.</p>
+
+<p>We would be grateful if you could share details about available internship positions and the application process.</p>
+
+<p>Thank you for your time and consideration.</p>
+
+<p>Best regards,<br>
+Placement Officer<br>
+University Placement Cell</p>"""
         }
         
-        try:
-            response = requests.post(ollama_url, json=payload, timeout=60)
-            response.raise_for_status()
-            result = response.json()
-            email_body = result.get("response", "").strip()
-            
-            # Generate subject based on template
-            subject = EmailTemplateService._generate_subject(template_id, context_data)
-            
-            return {
-                "subject": subject,
-                "body": email_body,
-                "template_used": template_id
-            }
-            
-        except requests.RequestException as e:
-            raise Exception(f"Failed to generate email with Ollama: {str(e)}")
+        # Get the email body for this template
+        email_body = email_bodies.get(template_id, "")
+        
+        # Generate subject based on template
+        subject = EmailTemplateService._generate_subject(template_id, context_data)
+        
+        return {
+            "subject": subject,
+            "body": email_body,
+            "template_used": template_id
+        }
     
     @staticmethod
     def _generate_subject(template_id: str, context: Dict[str, Any]) -> str:
         """Generate appropriate subject line based on template"""
+        company_name = context.get('company_name', 'Placement Opportunity')
         subjects = {
-            "final_year_students": f"Placement Opportunity - Final Year Students from {context.get('college_name', 'Our College')}",
-            "internship_opportunities": f"Summer Internship Collaboration - {context.get('college_name', 'Our College')}"
+            "final_year_students": f"Placement Opportunity - Final Year Students",
+            "internship_opportunities": f"Internship Collaboration Opportunity"
         }
         return subjects.get(template_id, "Placement Coordination")

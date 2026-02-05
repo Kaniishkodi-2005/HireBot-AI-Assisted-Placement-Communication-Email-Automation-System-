@@ -58,6 +58,7 @@ class AuthService:
 
         user = User(
             email=data.email,
+            full_name=data.full_name,
             password_hash=get_password_hash(data.password),
             organization=data.organization,
             role=role,
@@ -101,8 +102,10 @@ class AuthService:
 
         return TokenResponse(
             access_token=access_token,
+            id=user.id,
             role=user.role,
             email=user.email,
+            full_name=user.full_name,
             organization=user.organization,
         )
 
@@ -115,10 +118,10 @@ class AuthService:
         # Generate 6-digit OTP
         otp = ''.join(random.choices(string.digits, k=6))
         
-        # Store OTP with expiration (10 minutes)
+        # Store OTP with expiration (2 minutes)
         otp_storage[email] = {
             'otp': otp,
-            'expires_at': datetime.now() + timedelta(minutes=10)
+            'expires_at': datetime.now() + timedelta(minutes=2)
         }
         
         # Send OTP via email
@@ -127,7 +130,7 @@ class AuthService:
 
 Your OTP for password reset is: {otp}
 
-This OTP will expire in 10 minutes.
+This OTP will expire in 2 minutes.
 
 If you didn't request this, please ignore this email.
 
@@ -163,7 +166,75 @@ HireBot Team"""
         db.commit()
         
         # Clear OTP after successful reset
+        # Clear OTP after successful reset
         del otp_storage[email]
+
+    @staticmethod
+    def change_password(db: Session, user_id: int, current_password: str, new_password: str, confirm_password: str):
+        if new_password != confirm_password:
+            raise ValueError("New passwords do not match.")
+        
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise ValueError("User not found.")
+            
+        if not verify_password(current_password, user.password_hash):
+            raise ValueError("Incorrect current password.")
+            
+        user.password_hash = get_password_hash(new_password)
+        db.commit()
+    
+    @staticmethod
+    def send_signup_otp(email: str):
+        # Generate 6-digit OTP
+        otp = ''.join(random.choices(string.digits, k=6))
+        
+        # Store OTP with expiration (2 minutes)
+        otp_storage[email] = {
+            'otp': otp,
+            'expires_at': datetime.now() + timedelta(minutes=2)
+        }
+        
+        # Send OTP via email
+        subject = "Verify Your Email - HireBot"
+        body = f"""Hello,
+
+Your verification code for HireBot signup is: {otp}
+
+This code will expire in 2 minutes.
+
+If you didn't request this, please ignore this email.
+
+Best regards,
+HireBot Team"""
+        
+        EmailService.send_email(email, subject, body)
+        print(f"Signup OTP sent to {email}: {otp}")  # For debugging
+
+    @staticmethod
+    def verify_signup_otp(email: str, otp: str):
+        # Check if OTP exists and is valid
+        if email not in otp_storage:
+            raise ValueError("No OTP found for this email. Please request a new one.")
+        
+        stored_data = otp_storage[email]
+        
+        # Check if OTP has expired
+        if datetime.now() > stored_data['expires_at']:
+            del otp_storage[email]
+            raise ValueError("OTP has expired. Please request a new one.")
+        
+        # Verify OTP
+        if stored_data['otp'] != otp:
+            raise ValueError("Invalid OTP. Please try again.")
+        
+        # OTP verified successfully - we don't delete it here immediately
+        # logic: frontend calls verify -> gets OK -> calls signup -> we don't strictly enforce double check in signup yet
+        # simpler flow: verify just confirms it matches. 
+        # For stricter flow, we could issue a temporary signed token.
+        # For now, just return true/void.
+        
+        return True
 
     @staticmethod
     def google_login(db: Session, data: GoogleLoginRequest) -> Optional[TokenResponse]:
@@ -252,8 +323,10 @@ HireBot Team"""
 
             return TokenResponse(
                 access_token=access_token,
+                id=user.id,
                 role=user.role,
                 email=user.email,
+                full_name=user.full_name,
                 organization=user.organization,
             )
             

@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState, useRef } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { fetchHrContacts, uploadHrCsv, generateDraft, fetchConversation, syncConversation, sendEmail, sendFollowUp, checkFollowUps, fetchReceivedEmails, resetAllStatuses, syncAllStatuses, createTemplate, deleteTemplate, testHrParsing, generateAiDraft, createReminder, checkPendingReminders, getHrReplyNotifications, dismissHrReplyNotification, checkForNewHrReplies, createNotificationsForAllReplies, clearAllNotifications } from "../services/hrService";
 import Notification from "../components/Notification";
 import EmailConversationModal from "../components/EmailConversationModal";
@@ -11,9 +11,11 @@ import HrReplyNotification from "../components/HrReplyNotification";
 import Pagination from "../components/Pagination";
 import "../components/HrReplyNotification.css";
 import http from "../services/httpClient";
+import { Users, MessageSquare, Clock, CheckCircle } from "lucide-react";
 
 function HrDashboardPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [contacts, setContacts] = useState([]);
   const [filteredContacts, setFilteredContacts] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -35,23 +37,36 @@ function HrDashboardPage() {
   const [draftingContactId, setDraftingContactId] = useState(null);
   const [hrReplyNotifications, setHrReplyNotifications] = useState([]);
   const itemsPerPage = 9;
+  const isSyncingRef = useRef(false);
+
+  // Handle auto-opening conversation from notification click
+  useEffect(() => {
+    if (location.state?.openContactId && contacts.length > 0) {
+      const contactId = location.state.openContactId;
+      console.log("Auto-opening conversation for contact:", contactId);
+
+      const targetContact = contacts.find(c => c.id === contactId);
+      if (targetContact) {
+        // Clear the state so it doesn't trigger again on refresh/back
+        window.history.replaceState({}, document.title);
+        handleViewConversation(targetContact);
+      }
+    }
+  }, [location.state, contacts]); // dependency on contacts ensures it runs after contacts load
 
   const handleViewConversation = async (contact) => {
     console.log('Opening conversation for contact (instant):', contact.id);
 
-    // Dismiss any notifications for this contact when viewing conversation
-    const contactNotifications = hrReplyNotifications.filter(n => n.contact.id === contact.id);
-
-    // Update localStorage to remember these are dismissed even if backend sends them again
-    const dismissedIds = new Set(JSON.parse(localStorage.getItem('dismissedHrNotifications') || '[]'));
-
-    for (const notification of contactNotifications) {
-      await dismissHrReplyNotification(notification.id);
-      dismissedIds.add(notification.id);
-    }
-    localStorage.setItem('dismissedHrNotifications', JSON.stringify([...dismissedIds]));
-
-    setHrReplyNotifications(prev => prev.filter(n => n.contact.id !== contact.id));
+    // NOTE: Notifications are NOT dismissed when viewing conversation
+    // They will only be dismissed when explicitly closed by the user
+    // const contactNotifications = hrReplyNotifications.filter(n => n.contact.id === contact.id);
+    // const dismissedIds = new Set(JSON.parse(localStorage.getItem('dismissedHrNotifications') || '[]'));
+    // for (const notification of contactNotifications) {
+    //   await dismissHrReplyNotification(notification.id);
+    //   dismissedIds.add(notification.id);
+    // }
+    // localStorage.setItem('dismissedHrNotifications', JSON.stringify([...dismissedIds]));
+    // setHrReplyNotifications(prev => prev.filter(n => n.contact.id !== contact.id));
 
     try {
       // 1. Fetch cached data immediately and open modal
@@ -145,32 +160,7 @@ function HrDashboardPage() {
         }
       }
 
-      // Check again after sync
-      if (allMessages.length > 0) {
-        const lastMessage = allMessages[allMessages.length - 1];
-        // If we just synced and found a sent message at the end, warn again? 
-        // Maybe overkill, but safe. Let's just trust the first check + sync logic.
-        // Actually, if sync found a new SENT message, we should probably warn.
-        // But usually sync fetches INBOX mostly?
-        // Let's stick to the initial check for now to avoid complexity.
-      }
-
       const latestReply = hrReplies.length > 0 ? hrReplies[hrReplies.length - 1] : null;
-
-      console.log('=== HR REPLIES DEBUG ===');
-      console.log('Total HR replies found:', hrReplies.length);
-      hrReplies.forEach((reply, idx) => {
-        console.log(`Reply ${idx + 1}:`, {
-          timestamp: reply.timestamp || reply.sent_at,
-          subject: reply.subject,
-          content: reply.content?.substring(0, 100) + '...'
-        });
-      });
-      console.log('Selected latest reply:', {
-        subject: latestReply?.subject,
-        content: latestReply?.content?.substring(0, 100) + '...'
-      });
-      console.log('========================');
 
       if (!latestReply) {
         setNotification({
@@ -180,8 +170,6 @@ function HrDashboardPage() {
         setDraftingContactId(null);
         return;
       }
-
-      setNotification({ message: "Generating AI draft based on latest reply...", type: "info" });
 
       const hrReplyContent = latestReply.content;
       console.log('Using latest HR Reply for draft:', hrReplyContent);
@@ -198,46 +186,46 @@ function HrDashboardPage() {
       console.error('=== AI DRAFT ERROR ===');
       const errorMsg = error.response?.data?.detail || error.message || "Failed to generate AI draft";
       setNotification({ message: "Error: " + errorMsg, type: "error" });
-      // CRITICAL: Alert the user so they can see the error even if UI refreshes
-      window.alert("AI Draft Error: " + errorMsg);
     } finally {
       setDraftingContactId(null);
     }
   };
 
-
   const handleTemplateSelect = async (template) => {
-    console.log('Template selected:', template);
+    if (!templateContact) return;
+
     try {
       let draft;
 
-      // Create proper content for built-in templates
-      if (template.id === 'final_year_students') {
-        draft = {
-          subject: `Placement Opportunity - Final Year Students | ${templateContact.company}`,
-          content: `Dear ${templateContact.name || 'Hiring Team'},\n\nGreetings from the Placement Cell!\n\nWe are pleased to introduce our final year students for placement opportunities at ${templateContact.company}. Our students demonstrate exceptional academic performance and technical proficiency.\n\nWe would appreciate receiving your detailed job requirements to ensure precise candidate matching. This will enable us to shortlist the most suitable candidates for your consideration.\n\nLooking forward to a successful collaboration.\n\nBest regards,\nPlacement Officer`,
-          to: templateContact.email,
-          from: 'bitplacement28@gmail.com'
-        };
-      } else if (template.id === 'internship_opportunities') {
-        draft = {
-          subject: `Summer Internship Collaboration | ${templateContact.company}`,
-          content: `Dear ${templateContact.name || 'Hiring Team'},\n\nWe hope this email finds you well.\n\nWe are writing to explore internship opportunities at ${templateContact.company} for our pre-final year students. Our students are eager to gain practical experience and contribute to your organization.\n\nWe would be grateful if you could share details about available internship positions and the application process.\n\nThank you for your time and consideration.\n\nBest regards,\nPlacement Officer`,
-          to: templateContact.email,
-          from: 'bitplacement28@gmail.com'
-        };
-      } else if (template.id === 'follow_up') {
-        draft = {
-          subject: `Follow-up: Placement Requirements | ${templateContact.company}`,
-          content: `Dear ${templateContact.name || 'Team'},\n\nI hope this email finds you well.\n\nThis is a follow-up regarding our previous communication about placement opportunities at ${templateContact.company}. We remain committed to providing you with qualified candidates.\n\nWe would appreciate an update on your current hiring requirements.\n\nThank you for your time and consideration.\n\nBest regards,\nPlacement Officer`,
-          to: templateContact.email,
-          from: 'bitplacement28@gmail.com'
-        };
+      // Check if this is a built-in template (has title/description) or custom template (has subject/body)
+      const isBuiltInTemplate = template.title && template.description && !template.subject && !template.body;
+
+      if (isBuiltInTemplate) {
+        // Built-in template - needs AI generation from backend
+        setNotification({ message: "Generating email from template...", type: "info" });
+
+        try {
+          const response = await generateDraft(templateContact.id, template.id);
+          draft = {
+            subject: response.subject || `Collaboration Opportunity - ${templateContact.company}`,
+            content: response.body || response.content || '',
+            to: templateContact.email,
+            from: 'bitplacement28@gmail.com'
+          };
+          setNotification(null);
+        } catch (error) {
+          console.error('Failed to generate draft from template:', error);
+          setNotification({
+            message: "Failed to generate email from template. Please try again.",
+            type: "error"
+          });
+          return;
+        }
       } else {
-        // Handle custom templates
+        // Custom template - has subject and body already
         draft = {
-          subject: template.subject || 'No Subject',
-          content: (template.body || '').replace(/{company_name}/g, templateContact.company || 'Company').replace(/{contact_name}/g, templateContact.name || 'Hiring Team'),
+          subject: (template.subject || '').replace(/{company_name}/g, templateContact.company || 'Company'),
+          content: (template.body || template.content || '').replace(/{company_name}/g, templateContact.company || 'Company').replace(/{contact_name}/g, templateContact.name || 'Hiring Team'),
           to: templateContact.email,
           from: 'bitplacement28@gmail.com'
         };
@@ -358,69 +346,58 @@ function HrDashboardPage() {
       setHrReplyNotifications(data.notifications || []);
     }).catch(err => console.error("Initial notification fetch failed:", err));
 
-    // Background polling using Web Worker (prevents throttling in background tabs)
     const worker = new Worker('/pollingWorker.js');
-    const isSyncingRef = { current: false };
-
     worker.onmessage = async (e) => {
       if (e.data === 'tick') {
-        if (isSyncingRef.current) return; // Skip if previous sync is still running
+        if (isSyncingRef.current) return;
         isSyncingRef.current = true;
 
-        console.log('Worker tick: Starting background sync...');
-
         try {
-          // 1. Sync Emails (Independent try-catch)
+          // 1. Fetch new emails
           try {
             await fetchReceivedEmails();
           } catch (err) {
-            console.warn('Background email sync failed (non-fatal):', err);
+            console.log("Email fetch failed", err);
           }
 
-          // 2. Refresh contacts (Independent try-catch)
+          // 2. Reload contacts to update statuses
           try {
-            loadContacts();
+            const data = await fetchHrContacts();
+            setContacts(data);
           } catch (err) {
-            console.warn('Background contact refresh failed (non-fatal):', err);
+            console.log("Contact reload failed", err);
           }
 
-          // 3. Check for New Notifications (Independent try-catch)
+          // 3. Check for new HR replies for notifications
           try {
-            const notifData = await checkForNewHrReplies();
-            if (notifData && notifData.new_notifications && notifData.new_notifications.length > 0) {
+            const notifResult = await checkForNewHrReplies();
+            if (notifResult && notifResult.new_notifications && notifResult.new_notifications.length > 0) {
+              console.log("New notifications found in background:", notifResult.new_notifications);
               setHrReplyNotifications(prev => {
-                const existingEmailIds = new Set(prev.map(n => n.email_id));
-                const newUniqueNotifications = notifData.new_notifications.filter(
-                  n => !existingEmailIds.has(n.email_id)
-                );
-
-                // Play sound if we have valid new notifications
-                if (newUniqueNotifications.length > 0) {
-                  // The HrReplyNotification component handles sound based on props change
-                  // But we can log here for debugging
-                  console.log('New notifications found:', newUniqueNotifications.length);
-                }
-
-                return [...prev, ...newUniqueNotifications];
+                // De-duplicate
+                const existingIds = new Set(prev.map(n => n.id));
+                const newUnique = notifResult.new_notifications.filter(n => !existingIds.has(n.id));
+                return [...prev, ...newUnique];
               });
+
+              // Play sound for the FIRST new notification found in this batch if any
+              playNotificationSound();
             }
           } catch (err) {
-            console.error('Background notification check failed:', err);
+            console.log("Notification check failed", err);
           }
 
-          // 4. Update Reminders (Independent try-catch)
+          // 4. Check reminders
           try {
-            const reminderData = await checkPendingReminders();
-            if (reminderData) {
-              setReminderCount(reminderData.length);
-              const visits = reminderData.filter(r =>
-                r.description.toLowerCase().includes('visit') ||
-                (r.due_date_str && r.due_date_str.toLowerCase().includes('visit'))
-              );
-              setVisitReminders(visits);
-            }
+            const reminders = await checkPendingReminders();
+            setReminderCount(reminders.length);
+            const visits = reminders.filter(r =>
+              r.description.toLowerCase().includes('visit') ||
+              (r.due_date_str && r.due_date_str.toLowerCase().includes('visit'))
+            );
+            setVisitReminders(visits);
           } catch (err) {
-            console.warn('Background reminder check failed (non-fatal):', err);
+            console.log("Reminder check failed", err);
           }
 
         } catch (err) {
@@ -440,10 +417,33 @@ function HrDashboardPage() {
     };
   }, []);
 
-  // Filter contacts based on search
+  const [filterStatus, setFilterStatus] = useState("All");
+  const [showFilterDropdown, setShowFilterDropdown] = useState(false);
+
+  // Filter contacts based on search and status
   useEffect(() => {
     let filtered = [...contacts];
 
+    // 1. Apply Status Filter
+    if (filterStatus !== "All") {
+      if (filterStatus === "Not Started") {
+        filtered = filtered.filter(c => c.email_status === "Not Started");
+      } else if (filterStatus === "Replied") {
+        filtered = filtered.filter(c =>
+          c.email_status?.toLowerCase().includes("replied") ||
+          c.email_status?.toLowerCase().includes("positive") ||
+          c.email_status?.toLowerCase().includes("interest")
+        );
+      } else if (filterStatus === "Pending") {
+        filtered = filtered.filter(c =>
+          c.email_status === 'Sent' ||
+          c.email_status === 'Pending' ||
+          (c.email_status && !c.email_status.toLowerCase().includes("replied") && c.email_status !== "Not Started")
+        );
+      }
+    }
+
+    // 2. Apply Search Filter
     if (searchQuery) {
       filtered = filtered.filter(
         (c) =>
@@ -455,7 +455,18 @@ function HrDashboardPage() {
 
     setFilteredContacts(filtered);
     setCurrentPage(1);
-  }, [searchQuery, contacts]);
+  }, [searchQuery, contacts, filterStatus]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (showFilterDropdown && !event.target.closest('.filter-container')) {
+        setShowFilterDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showFilterDropdown]);
 
   const handleCsvUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -482,6 +493,23 @@ function HrDashboardPage() {
     }
   };
 
+  const handleDismissNotification = async (notificationId) => {
+    // Optimistically remove from UI
+    setHrReplyNotifications(prev => prev.filter(n => n.id !== notificationId));
+
+    // Call backend to mark as read
+    try {
+      await dismissHrReplyNotification(notificationId);
+    } catch (err) {
+      console.error("Failed to dismiss notification on backend:", err);
+    }
+
+    // Update local storage
+    const dismissedIds = new Set(JSON.parse(localStorage.getItem('dismissedHrNotifications') || '[]'));
+    dismissedIds.add(notificationId);
+    localStorage.setItem('dismissedHrNotifications', JSON.stringify([...dismissedIds]));
+  };
+
   const handleParseEmail = async () => {
     if (!company || !emailText) return;
     const result = await parseHrEmail(company, emailText);
@@ -503,7 +531,6 @@ function HrDashboardPage() {
     return name.substring(0, 2).toUpperCase();
   };
 
-  // Get status badge color
   const getStatusColor = (status) => {
     if (!status) return "bg-slate-200 text-slate-700";
     const lower = status.toLowerCase();
@@ -519,31 +546,9 @@ function HrDashboardPage() {
     return "bg-slate-200 text-slate-700 border border-slate-200";
   };
 
-  const totalContacts = contacts.length;
-  const unrepliedContacts = contacts.filter((c) =>
-    c.email_status?.toLowerCase().includes("awaiting") ||
-    c.email_status?.toLowerCase().includes("pending") ||
-    c.email_status?.toLowerCase().includes("sent")
-  ).length;
-  const repliedContacts = contacts.filter((c) =>
-    c.email_status?.toLowerCase().includes("replied")
-  ).length;
-  const notStartedContacts = contacts.filter((c) =>
-    !c.email_status || c.email_status?.toLowerCase().includes("not started")
-  ).length;
-
-  // HR Reply Notification Handlers
-  const handleDismissNotification = async (notificationId) => {
-    try {
-      await dismissHrReplyNotification(notificationId);
-      setHrReplyNotifications(prev => prev.filter(n => n.id !== notificationId));
-    } catch (error) {
-      console.error('Failed to dismiss notification:', error);
-    }
-  };
-
   return (
-    <div className="space-y-6 min-h-screen bg-gray-50">
+    <div className="animate-fade-in">
+      {/* Reminder Panel - conditionally rendered sidebar/overlay could go here */}
       {showRemindersPanel && (
         <ReminderNotifications
           onClose={() => setShowRemindersPanel(false)}
@@ -609,25 +614,21 @@ function HrDashboardPage() {
           onBack={handleBackToTemplates}
         />
       )}
-      {/* HR Reply Notifications - positioned before header */}
-      <HrReplyNotification
-        notifications={hrReplyNotifications}
-        onDismiss={handleDismissNotification}
-      />
+
 
       {/* Header Section */}
-      <header className="flex items-center justify-between">
+      <header className="flex items-center justify-between font-sans mb-4">
         <div>
-          <h2 className="text-2xl font-bold text-slate-800">HR Directory</h2>
-          <p className="text-slate-500 text-sm">Manage corporate relations and track AI-analyzed communications</p>
+          <h2 className="text-3xl font-bold text-slate-800 dark:text-white transition-colors">HR Directory</h2>
+          <p className="text-slate-500 dark:text-gray-400 text-sm transition-colors">Manage corporate relations and track AI-analyzed communications</p>
         </div>
 
         <div className="flex items-center gap-3">
-          <label className="cursor-pointer text-white px-4 py-2 rounded-lg font-semibold text-sm shadow-sm transition-all flex items-center gap-2" style={{ background: 'linear-gradient(135deg, #6B64F2 0%, #8E5BF6 50%, #A656F7 100%)' }}>
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+          <label className="cursor-pointer text-white px-6 py-2.5 rounded-xl font-semibold text-sm shadow-lg shadow-indigo-500/20 transition-all flex items-center gap-2 transform active:scale-95" style={{ backgroundColor: '#AF69F8' }}>
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
             </svg>
-            Upload (CSV/Excel)
+            Bulk Upload
             <input
               type="file"
               accept=".csv,.xlsx,.xls"
@@ -638,52 +639,94 @@ function HrDashboardPage() {
 
           <button
             onClick={() => navigate("/dashboard/hr/edit")}
-            className="bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-lg font-semibold text-sm shadow-sm transition-all flex items-center gap-2"
+            className="bg-white border-2 border-slate-100 hover:border-slate-200 text-slate-700 px-6 py-2.5 rounded-xl font-semibold text-sm shadow-sm transition-all flex items-center gap-2 transform active:scale-95"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
             </svg>
-            Edit
+            Manage
           </button>
         </div>
       </header>
 
-
-
       {/* Summary Cards */}
-      <section className="grid md:grid-cols-4 gap-6">
-        <div className="bg-white rounded-xl p-6 relative overflow-hidden group transition-all duration-300" style={{ boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
-          <div className="absolute top-4 right-4">
-            <span className="text-3xl text-gray-400">👥</span>
+      <section className="grid md:grid-cols-4 gap-6 mb-8 font-sans">
+        <div className="bg-white dark:bg-slate-800 rounded-xl p-4 relative overflow-hidden group transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:bg-purple-50/20 dark:hover:bg-purple-900/10 border border-transparent hover:border-purple-200 dark:hover:border-purple-900 cursor-pointer shadow-sm">
+          <div className="flex justify-between items-start mb-1">
+            <p className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase tracking-wider group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors mt-2">Total HR Contacts</p>
+            <div className="p-2 bg-purple-50 dark:bg-purple-900/20 rounded-lg group-hover:bg-white dark:group-hover:bg-slate-800 transition-colors">
+              <Users className="w-5 h-5 text-purple-500 dark:text-purple-400" />
+            </div>
           </div>
-          <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider mb-2">Total HR Contacts</p>
-          <p className="text-4xl font-bold text-slate-800">{totalContacts}</p>
+          <p className="text-4xl font-bold text-slate-800 dark:text-white group-hover:text-purple-700 dark:group-hover:text-purple-400 transition-colors">{contacts.length}</p>
         </div>
-        <div className="bg-white rounded-xl p-6 relative overflow-hidden group transition-all duration-300" style={{ boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
-          <div className="absolute top-4 right-4">
-            <span className="text-3xl text-gray-400">📝</span>
+        <div className="bg-white dark:bg-slate-800 rounded-xl p-4 relative overflow-hidden group transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:bg-amber-50/20 dark:hover:bg-amber-900/10 border border-transparent hover:border-amber-200 dark:hover:border-amber-900 cursor-pointer shadow-sm">
+          <div className="flex justify-between items-start mb-1">
+            <p className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase tracking-wider group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors mt-2">Not Started</p>
+            <div className="p-2 bg-amber-50 dark:bg-amber-900/20 rounded-lg group-hover:bg-white dark:group-hover:bg-slate-800 transition-colors">
+              <MessageSquare className="w-5 h-5 text-amber-500 dark:text-amber-400" />
+            </div>
           </div>
-          <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider mb-2">Not Started</p>
-          <p className="text-4xl font-bold text-slate-800">{notStartedContacts}</p>
+          <p className="text-4xl font-bold text-slate-800 dark:text-white group-hover:text-amber-700 dark:group-hover:text-amber-400 transition-colors">{contacts.filter(c => c.email_status === 'Not Started').length}</p>
         </div>
-        <div className="bg-white rounded-xl p-6 relative overflow-hidden group transition-all duration-300" style={{ boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
-          <div className="absolute top-4 right-4">
-            <span className="text-3xl text-gray-400">⏰</span>
+        <div className="bg-white dark:bg-slate-800 rounded-xl p-4 relative overflow-hidden group transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:bg-pink-50/20 dark:hover:bg-pink-900/10 border border-transparent hover:border-pink-200 dark:hover:border-pink-900 cursor-pointer shadow-sm">
+          <div className="flex justify-between items-start mb-1">
+            <p className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase tracking-wider group-hover:text-pink-600 dark:group-hover:text-pink-400 transition-colors mt-2">Unreplied</p>
+            <div className="p-2 bg-pink-50 dark:bg-pink-900/20 rounded-lg group-hover:bg-white dark:group-hover:bg-slate-800 transition-colors">
+              <Clock className="w-5 h-5 text-pink-500 dark:text-pink-400" />
+            </div>
           </div>
-          <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider mb-2">Unreplied</p>
-          <p className="text-4xl font-bold text-slate-800">{unrepliedContacts}</p>
+          <p className="text-4xl font-bold text-slate-800 dark:text-white group-hover:text-pink-700 dark:group-hover:text-pink-400 transition-colors">{contacts.filter(c => c.email_status === 'Sent' || c.email_status === 'Pending').length}</p>
         </div>
-        <div className="bg-white rounded-xl p-6 relative overflow-hidden group transition-all duration-300" style={{ boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
-          <div className="absolute top-4 right-4">
-            <span className="text-3xl text-gray-400">✉️</span>
+        <div className="bg-white dark:bg-slate-800 rounded-xl p-4 relative overflow-hidden group transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:bg-emerald-50/20 dark:hover:bg-emerald-900/10 border border-transparent hover:border-emerald-200 dark:hover:border-emerald-900 cursor-pointer shadow-sm">
+          <div className="flex justify-between items-start mb-1">
+            <p className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase tracking-wider group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors mt-2">Replied</p>
+            <div className="p-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg group-hover:bg-white dark:group-hover:bg-slate-800 transition-colors">
+              <CheckCircle className="w-5 h-5 text-emerald-500 dark:text-emerald-400" />
+            </div>
           </div>
-          <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider mb-2">Replied</p>
-          <p className="text-4xl font-bold text-slate-800">{repliedContacts}</p>
+          <p className="text-4xl font-bold text-slate-800 dark:text-white group-hover:text-emerald-700 dark:group-hover:text-emerald-400 transition-colors">{contacts.filter(c => c.email_status?.toLowerCase().includes('replied')).length}</p>
         </div>
       </section>
 
-      {/* Search */}
-      <div className="flex items-center gap-4">
+      {/* Search and Filter Section */}
+      <div className="flex items-center gap-4 mb-6 relative">
+        <div className="relative filter-container">
+          <button
+            onClick={() => setShowFilterDropdown(!showFilterDropdown)}
+            className={`bg-white dark:bg-slate-800 border-2 hover:border-slate-200 dark:hover:border-slate-600 text-slate-700 dark:text-gray-300 px-6 py-2.5 rounded-xl font-bold text-sm shadow-sm transition-all flex items-center gap-2 whitespace-nowrap ${filterStatus !== 'All' ? 'border-purple-500 text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/20' : 'border-slate-100 dark:border-slate-700'}`}
+          >
+            <svg className={`w-5 h-5 ${filterStatus !== 'All' ? 'text-purple-600' : 'text-slate-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+            </svg>
+            {filterStatus === 'All' ? 'Filter' : filterStatus}
+            {filterStatus !== 'All' && (
+              <span onClick={(e) => { e.stopPropagation(); setFilterStatus('All'); }} className="ml-1 hover:text-purple-800 rounded-full p-0.5">
+                ✕
+              </span>
+            )}
+          </button>
+
+          {showFilterDropdown && (
+            <div className="absolute top-full left-0 mt-2 w-48 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-gray-100 dark:border-slate-700 py-1 z-50 animate-fade-in">
+              {['All', 'Not Started', 'Pending', 'Replied'].map((status) => (
+                <button
+                  key={status}
+                  onClick={() => {
+                    setFilterStatus(status);
+                    setShowFilterDropdown(false);
+                  }}
+                  className={`w-full text-left px-4 py-2.5 text-sm font-medium hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors flex items-center justify-between ${filterStatus === status ? 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/20' : 'text-gray-700 dark:text-gray-300'
+                    }`}
+                >
+                  {status}
+                  {filterStatus === status && <span className="text-purple-600">✓</span>}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
         <div className="flex-1 relative">
           <svg className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -693,9 +736,29 @@ function HrDashboardPage() {
             placeholder="Search by name, company, or email..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-white border border-slate-300 rounded-lg pl-12 pr-4 py-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 shadow-sm"
+            className="w-full bg-white dark:bg-slate-800 border-2 border-slate-100 dark:border-slate-700 hover:border-slate-200 dark:hover:border-slate-600 rounded-xl pl-12 pr-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-slate-200 dark:focus:border-slate-600 transition-colors font-normal text-sm shadow-sm"
           />
         </div>
+
+        <button
+          onClick={() => setShowRemindersPanel(!showRemindersPanel)}
+          className="relative text-white px-6 py-2.5 rounded-xl font-semibold text-sm shadow-lg shadow-indigo-500/20 transition-all flex items-center gap-2 transform active:scale-95 whitespace-nowrap"
+          style={{ backgroundColor: '#AF69F8' }}
+        >
+          {visitReminders.some(r => r.is_today || r.is_tomorrow) ? (
+            <span className="text-xl animate-pulse">🚨</span>
+          ) : (
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+            </svg>
+          )}
+          Reminders
+          {reminderCount > 0 && (
+            <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center border-2 border-white shadow-sm">
+              {reminderCount}
+            </span>
+          )}
+        </button>
       </div>
 
       {/* Contact Cards Grid */}
@@ -704,62 +767,43 @@ function HrDashboardPage() {
           <p className="text-slate-500 animate-pulse">Loading contacts...</p>
         </div>
       ) : paginatedContacts.length === 0 ? (
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-12 text-center">
-          <div className="flex flex-col items-center justify-center text-slate-400">
+        <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-12 text-center transition-colors">
+          <div className="flex flex-col items-center justify-center text-slate-400 dark:text-gray-500">
             <p>No HR contacts found.</p>
             <p className="text-sm mt-1">Upload a CSV or Excel file to get started.</p>
           </div>
         </div>
       ) : (
-        <section className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <section className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden animate-slide-up transition-colors">
+          <div className="p-6 border-b border-slate-100 dark:border-slate-700 flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
-              <h3 className="font-bold text-slate-800 text-lg">HR Contacts</h3>
-              <p className="text-sm text-slate-500 mt-1">
+              <h3 className="font-bold text-slate-800 dark:text-white text-lg">HR Contacts</h3>
+              <p className="text-sm text-slate-500 dark:text-gray-400 mt-1">
                 Showing {filteredContacts.length} contact(s)
               </p>
             </div>
-            <button
-              onClick={() => setShowRemindersPanel(!showRemindersPanel)}
-              className="relative px-5 py-3 rounded-lg font-semibold text-base shadow-md transition-all flex items-center gap-2 text-white"
-              style={{ background: 'linear-gradient(135deg, #6B64F2 0%, #8E5BF6 50%, #A656F7 100%)' }}
-            >
-              {/* Show alert emoji for urgent visits OR bell icon for regular reminders */}
-              {visitReminders.some(r => r.is_today || r.is_tomorrow) ? (
-                <span className="text-2xl animate-pulse">🚨</span>
-              ) : (
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                </svg>
-              )}
-              Reminders
-              {reminderCount > 0 && (
-                <span className="absolute -top-2 -right-2 bg-pink-500 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center">
-                  {reminderCount}
-                </span>
-              )}
-            </button>
+            {/* Reminders button was here, moved up to toolbar */}
           </div>
 
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 p-6">
             {paginatedContacts.map((c) => (
               <div
                 key={c.id}
-                className="bg-gradient-to-br from-slate-50 to-white rounded-xl border border-slate-200 shadow-lg hover:shadow-xl transition-all duration-300 p-5 hover:border-slate-300"
+                className="bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 shadow-sm hover:shadow-lg transition-all duration-300 p-5 hover:-translate-y-1 hover:border-slate-200 dark:hover:border-slate-600 group"
               >
                 {/* Header with Avatar and Info */}
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-md" style={{ background: 'linear-gradient(135deg, #6366F1, #9333EA)' }}>
+                  <div className="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-md" style={{ background: 'linear-gradient(135deg, #AF69F8, #9333EA)' }}>
                     {getInitials(c.name)}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h3 className="font-bold text-gray-900 text-sm truncate uppercase">{c.name}</h3>
-                    <p className="text-gray-600 font-medium text-xs truncate">{c.company}</p>
+                    <h3 className="font-bold text-gray-900 dark:text-white text-sm truncate uppercase">{c.name}</h3>
+                    <p className="text-gray-600 dark:text-gray-400 font-medium text-xs truncate">{c.company}</p>
                   </div>
                   {/* Reply Status Badge */}
                   <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold ${c.email_status?.toLowerCase().includes('replied') || c.email_status?.toLowerCase().includes('positive')
-                    ? 'bg-green-100 text-green-800 border border-green-200'
-                    : 'bg-gray-100 text-gray-600 border border-gray-200'
+                    ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-400 border border-green-200 dark:border-green-800'
+                    : 'bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-slate-600'
                     }`}>
                     {c.email_status?.toLowerCase().includes('replied') || c.email_status?.toLowerCase().includes('positive')
                       ? '✓ REPLIED'
@@ -768,19 +812,19 @@ function HrDashboardPage() {
                   </span>
                 </div>
 
-                <p className="text-xs text-gray-500 mb-4 truncate">{c.email}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-4 truncate">{c.email}</p>
 
                 {/* Status Information */}
                 <div className="space-y-2 mb-4">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs text-gray-600">Email:</span>
+                    <span className="text-xs text-gray-600 dark:text-gray-400">Email:</span>
                     <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${getStatusColor(c.email_status)}`}>
                       {c.email_status || "Not Started"}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-xs text-gray-600">Draft:</span>
-                    <span className="text-xs text-gray-700 font-medium">{c.draft_status || "Not Started"}</span>
+                    <span className="text-xs text-gray-600 dark:text-gray-400">Draft:</span>
+                    <span className="text-xs text-gray-700 dark:text-gray-300 font-medium">{c.draft_status || "Not Started"}</span>
                   </div>
                 </div>
 
@@ -790,7 +834,7 @@ function HrDashboardPage() {
                     <button
                       onClick={() => handleViewConversation(c)}
                       className="flex-[3] px-3 py-2 rounded-lg text-xs font-semibold text-white shadow-sm transition-all hover:opacity-90 hover:shadow-md"
-                      style={{ background: 'linear-gradient(135deg, #6B64F2 0%, #8E5BF6 50%, #A656F7 100%)' }}
+                      style={{ backgroundColor: '#AF69F8' }}
                     >
                       View Conversation
                     </button>
@@ -805,12 +849,12 @@ function HrDashboardPage() {
                     <button
                       onClick={() => handleAiDraft(c)}
                       disabled={draftingContactId === c.id}
-                      className="flex-1 px-3 py-2 bg-purple-50 text-purple-600 hover:bg-purple-100 rounded-lg text-xs font-bold transition-all shadow-sm border border-purple-100 flex items-center justify-center gap-1"
+                      className="flex-1 px-3 py-2 bg-purple-50 dark:bg-[#E0C0FF] text-purple-600 dark:text-purple-900 hover:bg-purple-100 dark:hover:bg-[#d0a0ff] rounded-lg text-xs font-bold transition-all shadow-sm border border-purple-100 dark:border-purple-200 flex items-center justify-center gap-1"
                     >
                       {draftingContactId === c.id ? (
-                        <span className="w-4 h-4 border-2 border-purple-600 border-t-transparent rounded-full animate-spin"></span>
+                        <span className="w-4 h-4 border-2 border-purple-600 dark:border-purple-800 border-t-transparent rounded-full animate-spin"></span>
                       ) : (
-                        <span style={{ color: '#9333ea' }}>✨</span>
+                        <span style={{ color: '#9333ea' }} className="dark:text-purple-800">✨</span>
                       )}
                       {draftingContactId === c.id ? "Drafting..." : "AI Draft"}
                     </button>
@@ -824,15 +868,17 @@ function HrDashboardPage() {
       }
 
       {/* Premium Pagination */}
-      {filteredContacts.length > itemsPerPage && (
-        <div className="pb-8">
-          <Pagination
-            currentPage={currentPage}
-            totalPages={totalPages}
-            onPageChange={setCurrentPage}
-          />
-        </div>
-      )}
+      {
+        filteredContacts.length > itemsPerPage && (
+          <div className="pb-8">
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onPageChange={setCurrentPage}
+            />
+          </div>
+        )
+      }
     </div >
   );
 }

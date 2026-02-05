@@ -33,7 +33,7 @@ function Pagination({ currentPage, totalPages, onPageChange }) {
           relative flex items-center justify-center w-12 h-12 rounded-xl transition-all duration-300 border
           ${currentPage === 1
             ? 'bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed'
-            : 'bg-white text-slate-500 border-slate-200 hover:bg-[#6B64F2] hover:text-white hover:border-[#6B64F2] hover:shadow-lg hover:-translate-y-1 active:scale-95 shadow-sm'
+            : 'bg-[#AF69F8] text-white border-[#AF69F8] shadow-md hover:bg-[#9b5de5] hover:border-[#9b5de5] hover:shadow-lg hover:-translate-y-1 active:scale-95'
           }
         `}
       >
@@ -56,7 +56,7 @@ function Pagination({ currentPage, totalPages, onPageChange }) {
                 {/* Hover Background (Inactive only) - Fade in scale effect */}
                 <div
                   className={`
-                    absolute inset-0 bg-slate-100 rounded-lg transform transition-all duration-300 ease-out
+                    absolute inset-0 bg-purple-50 rounded-lg transform transition-all duration-300 ease-out
                     ${currentPage === page
                       ? 'opacity-0 scale-50'
                       : 'opacity-0 group-hover:opacity-100 scale-100'
@@ -67,8 +67,8 @@ function Pagination({ currentPage, totalPages, onPageChange }) {
                 {/* Active Diamond Background - Rotate and Scale Animation */}
                 <div
                   className={`
-                    absolute inset-0 bg-gradient-to-br from-[#6B64F2] via-[#8E5BF6] to-[#A656F7]
-                    rounded-[10px] shadow-[0_8px_20px_-4px_rgba(135,92,246,0.5)]
+                    absolute inset-0 bg-gradient-to-br from-[#AF69F8] via-[#C084FC] to-[#D8B4FE]
+                    rounded-[10px] shadow-[0_8px_20px_-4px_rgba(175,105,248,0.5)]
                     transform transition-all duration-500 cubic-bezier(0.34, 1.56, 0.64, 1) origin-center
                     ${currentPage === page
                       ? 'opacity-100 rotate-45 scale-100'
@@ -83,7 +83,7 @@ function Pagination({ currentPage, totalPages, onPageChange }) {
                     relative z-10 font-bold text-sm transition-colors duration-300
                     ${currentPage === page
                       ? 'text-white'
-                      : 'text-slate-500 group-hover:text-[#6B64F2]'
+                      : 'text-slate-500 group-hover:text-[#AF69F8]'
                     }
                   `}
                 >
@@ -103,7 +103,7 @@ function Pagination({ currentPage, totalPages, onPageChange }) {
           relative flex items-center justify-center w-12 h-12 rounded-xl transition-all duration-300 border
           ${currentPage === totalPages
             ? 'bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed'
-            : 'bg-[#6B64F2] text-white border-[#6B64F2] shadow-md hover:bg-[#5a52e0] hover:border-[#5a52e0] hover:shadow-lg hover:-translate-y-1 active:scale-95'
+            : 'bg-[#AF69F8] text-white border-[#AF69F8] shadow-md hover:bg-[#9b5de5] hover:border-[#9b5de5] hover:shadow-lg hover:-translate-y-1 active:scale-95'
           }
         `}
       >

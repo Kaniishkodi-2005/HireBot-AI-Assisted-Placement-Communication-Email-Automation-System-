@@ -49,12 +49,7 @@ function EditHrContactsPage() {
 
       // Navigate back after 2 seconds
       setTimeout(() => {
-        const { user } = JSON.parse(localStorage.getItem("hirebot_auth") || "{}");
-        if (user?.role === "admin") {
-          navigate("/dashboard/admin");
-        } else {
-          navigate("/dashboard/hr");
-        }
+        navigate("/dashboard/hr");
       }, 2000);
     } catch (error) {
       const errorMsg = error.response?.data?.detail || error.message || "Failed to save changes";
@@ -110,25 +105,21 @@ function EditHrContactsPage() {
         />
       )}
 
-      <header className="flex items-center justify-between">
+      <header className="flex items-center justify-between mb-6">
         <div>
-          <h2 className="text-2xl font-semibold text-gray-900">Edit HR Contacts</h2>
-          <p className="text-sm text-gray-600 mt-1">
+          <h2 className="text-2xl font-bold text-slate-800 dark:text-white">Edit HR Contacts</h2>
+          <p className="text-slate-500 dark:text-gray-400 text-sm mt-1">
             Edit HR contact data directly in the table below. Click "Save Changes" when done.
           </p>
         </div>
         <button
-          onClick={() => {
-            const { user } = JSON.parse(localStorage.getItem("hirebot_auth") || "{}");
-            if (user?.role === "admin") {
-              navigate("/dashboard/admin");
-            } else {
-              navigate("/dashboard/hr");
-            }
-          }}
-          className="px-4 py-2 rounded-lg font-semibold text-sm shadow-sm transition-all text-white flex items-center gap-2"
-          style={{ background: 'linear-gradient(135deg, #6B64F2 0%, #8E5BF6 50%, #A656F7 100%)' }}
+          onClick={() => navigate("/dashboard/hr")}
+          className="px-6 py-2.5 rounded-xl font-semibold text-sm shadow-lg shadow-indigo-500/20 transition-all text-white flex items-center gap-2 transform active:scale-95"
+          style={{ backgroundColor: '#AF69F8' }}
         >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+          </svg>
           Back to Dashboard
         </button>
       </header>
@@ -146,14 +137,7 @@ function EditHrContactsPage() {
           data={contacts}
           columns={columns}
           onSave={handleSave}
-          onCancel={() => {
-            const { user } = JSON.parse(localStorage.getItem("hirebot_auth") || "{}");
-            if (user?.role === "admin") {
-              navigate("/dashboard/admin");
-            } else {
-              navigate("/dashboard/hr");
-            }
-          }}
+          onCancel={() => navigate("/dashboard/hr")}
           title="Edit HR Contact Data"
           disableUppercase={true}
         />

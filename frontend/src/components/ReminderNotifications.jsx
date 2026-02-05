@@ -164,16 +164,16 @@ function ReminderNotifications({ onClose, onCountChange }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden flex flex-col">
-        <div className="bg-purple-50 border-b border-purple-200 p-4 flex items-center justify-between">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100]">
+      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden flex flex-col transition-colors duration-200">
+        <div className="bg-purple-50 dark:bg-slate-800 border-b border-purple-200 dark:border-slate-700 p-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse"></div>
-            <h4 className="text-lg font-semibold text-purple-800">Reminders & Commitments</h4>
+            <h4 className="text-lg font-semibold text-purple-800 dark:text-purple-300">Reminders & Commitments</h4>
           </div>
           <button
             onClick={onClose}
-            className="text-purple-600 hover:text-purple-800 text-2xl font-bold"
+            className="text-purple-600 dark:text-purple-400 hover:text-purple-800 dark:hover:text-purple-200 text-2xl font-bold"
           >
             ×
           </button>
@@ -182,24 +182,24 @@ function ReminderNotifications({ onClose, onCountChange }) {
         <div className="p-6 overflow-y-auto flex-1">
           {/* Undo notification */}
           {recentlyFulfilled && (
-            <div className="mb-4 bg-green-50 border border-green-200 rounded-lg p-3 flex items-center justify-between">
+            <div className="mb-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-3 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="text-green-600">✓</span>
-                <span className="text-sm text-green-800">
+                <span className="text-green-600 dark:text-green-400">✓</span>
+                <span className="text-sm text-green-800 dark:text-green-300">
                   Marked "{recentlyFulfilled.description}" as fulfilled
                 </span>
               </div>
               <button
                 onClick={handleUndoFulfilled}
-                className="text-sm text-green-700 hover:text-green-900 font-medium underline"
+                className="text-sm text-green-700 dark:text-green-400 hover:text-green-900 dark:hover:text-green-200 font-medium underline"
               >
                 Undo
               </button>
             </div>
           )}
           {pendingReminders.length === 0 && visitReminders.length === 0 ? (
-            <div className="text-center py-12 text-gray-500">
-              <svg className="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+              <svg className="w-16 h-16 mx-auto mb-4 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               <p className="text-lg font-medium">No reminders</p>
@@ -210,8 +210,8 @@ function ReminderNotifications({ onClose, onCountChange }) {
               {/* Visit Reminders */}
               {visitReminders.map((notification) => (
                 <div key={`visit-${notification.id}`} className={`rounded-lg p-4 border ${notification.is_today || notification.is_tomorrow
-                  ? 'bg-red-50 border-red-200'
-                  : 'bg-purple-50 border-purple-200'
+                  ? 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-900/30'
+                  : 'bg-purple-50 dark:bg-slate-700/50 border-purple-200 dark:border-slate-600'
                   }`}>
                   <div className="flex items-center gap-2 mb-2">
                     <div className={`w-2 h-2 rounded-full animate-pulse ${notification.is_today || notification.is_tomorrow
@@ -219,8 +219,8 @@ function ReminderNotifications({ onClose, onCountChange }) {
                       : 'bg-purple-500'
                       }`}></div>
                     <h4 className={`text-sm font-semibold ${notification.is_today || notification.is_tomorrow
-                      ? 'text-red-800'
-                      : 'text-purple-800'
+                      ? 'text-red-800 dark:text-red-300'
+                      : 'text-purple-800 dark:text-purple-300'
                       }`}>
                       {notification.is_today ? '🔔 Today\'s Visit' :
                         notification.is_tomorrow ? '⏰ Tomorrow\'s Visit' :
@@ -231,18 +231,18 @@ function ReminderNotifications({ onClose, onCountChange }) {
                     )}
                   </div>
 
-                  <div className="text-base text-gray-800 mb-2">
+                  <div className="text-base text-gray-800 dark:text-gray-200 mb-2">
                     <strong>{notification.company_name}</strong> - {notification.contact_name}
                   </div>
 
-                  <div className="text-sm text-gray-600 mb-3">
+                  <div className="text-sm text-gray-600 dark:text-gray-400 mb-3">
                     {notification.description}
                   </div>
 
                   <div className="flex gap-3 mt-4">
                     <button
                       onClick={() => handleMarkFulfilled(notification.id)}
-                      className="flex items-center gap-2 px-4 py-2 bg-green-100 text-green-700 text-sm font-medium rounded-lg hover:bg-green-200 transition-colors duration-200 shadow-sm border border-green-200"
+                      className="flex items-center gap-2 px-4 py-2 bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-400 text-sm font-medium rounded-lg hover:bg-green-200 dark:hover:bg-green-900/30 transition-colors duration-200 shadow-sm border border-green-200 dark:border-green-800"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -251,7 +251,7 @@ function ReminderNotifications({ onClose, onCountChange }) {
                     </button>
                     <button
                       onClick={() => handleSendReminder(notification)}
-                      className="flex items-center gap-2 px-4 py-2 bg-blue-100 text-blue-700 text-sm font-medium rounded-lg hover:bg-blue-200 transition-colors duration-200 shadow-sm border border-blue-200"
+                      className="flex items-center gap-2 px-4 py-2 bg-blue-100 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 text-sm font-medium rounded-lg hover:bg-blue-200 dark:hover:bg-blue-900/30 transition-colors duration-200 shadow-sm border border-blue-200 dark:border-blue-800"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
@@ -264,20 +264,20 @@ function ReminderNotifications({ onClose, onCountChange }) {
 
               {/* Overdue / Other Reminders */}
               {pendingReminders.map((reminder) => (
-                <div key={`reminder-${reminder.id}`} className="bg-violet-50 rounded-lg p-4 border border-violet-200">
-                  <div className="text-sm text-violet-700 font-medium mb-2">
+                <div key={`reminder-${reminder.id}`} className="bg-violet-50 dark:bg-slate-700/50 rounded-lg p-4 border border-violet-200 dark:border-slate-600">
+                  <div className="text-sm text-violet-700 dark:text-purple-300 font-medium mb-2">
                     {reminder.contact_name} • {reminder.company_name}
                   </div>
-                  <div className="text-base text-gray-800 mb-2">
+                  <div className="text-base text-gray-800 dark:text-gray-200 mb-2">
                     {reminder.description}
                   </div>
-                  <div className="text-sm text-violet-600 mb-3">
+                  <div className="text-sm text-violet-600 dark:text-purple-300/80 mb-3">
                     Due: {reminder.deadline_text}
                   </div>
                   <div className="flex gap-3 mt-4">
                     <button
                       onClick={() => handleMarkFulfilled(reminder.id)}
-                      className="flex items-center gap-2 px-4 py-2 bg-green-100 text-green-700 text-sm font-medium rounded-lg hover:bg-green-200 transition-colors duration-200 shadow-sm border border-green-200"
+                      className="flex items-center gap-2 px-4 py-2 bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-400 text-sm font-medium rounded-lg hover:bg-green-200 dark:hover:bg-green-900/30 transition-colors duration-200 shadow-sm border border-green-200 dark:border-green-800"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -286,7 +286,7 @@ function ReminderNotifications({ onClose, onCountChange }) {
                     </button>
                     <button
                       onClick={() => handleSendReminder(reminder)}
-                      className="flex items-center gap-2 px-4 py-2 bg-blue-100 text-blue-700 text-sm font-medium rounded-lg hover:bg-blue-200 transition-colors duration-200 shadow-sm border border-blue-200"
+                      className="flex items-center gap-2 px-4 py-2 bg-blue-100 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 text-sm font-medium rounded-lg hover:bg-blue-200 dark:hover:bg-blue-900/30 transition-colors duration-200 shadow-sm border border-blue-200 dark:border-blue-800"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />

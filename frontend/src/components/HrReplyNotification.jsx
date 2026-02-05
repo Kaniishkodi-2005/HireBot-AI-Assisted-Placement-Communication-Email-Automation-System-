@@ -101,14 +101,14 @@ const HrReplyNotification = ({ notifications, onDismiss }) => {
         .map((notification) => (
           <div
             key={notification.id}
-            className="bg-white border-l-4 border-green-600 shadow-sm px-4 py-3 w-full animate-slide-down rounded-xl"
+            className="bg-white border-l-4 border-green-600 shadow-sm px-3 py-2 w-full animate-slide-down rounded-lg"
           >
             <div className="flex items-center space-x-3">
               <div className="flex-shrink-0">
                 <img
                   src="/assets/images/notification_icon.png"
                   alt="Email Icon"
-                  className="w-10 h-10 object-contain drop-shadow-sm"
+                  className="w-8 h-8 object-contain drop-shadow-sm"
                 />
               </div>
               <div className="flex-1">
