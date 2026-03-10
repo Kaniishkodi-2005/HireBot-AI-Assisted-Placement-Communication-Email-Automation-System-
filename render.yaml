@@ -22,12 +22,3 @@ services:
         generateValue: true
       - key: USE_SQLITE
         value: true
-
-  # Frontend Service
-  - type: static
-    name: hirebot-frontend
-    buildCommand: cd frontend && npm install && npm run build
-    staticPublishPath: ./frontend/dist
-    envVars:
-      - key: VITE_API_BASE_URL
-        value: https://hirebot-backend.onrender.com/api/v1
