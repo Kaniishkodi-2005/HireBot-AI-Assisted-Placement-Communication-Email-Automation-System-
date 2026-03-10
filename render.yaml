@@ -1,8 +1,10 @@
 services:
+  # Backend API Service
   - type: web
     name: hirebot-backend
-    env: docker
-    dockerfilePath: ./backend/Dockerfile
+    runtime: python
+    buildCommand: cd backend && pip install -r requirements.txt
+    startCommand: cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: APP_ENV
         value: production
@@ -10,21 +12,23 @@ services:
         sync: false
       - key: EMAIL_PASS
         sync: false
-      - key: MYSQL_HOST
-        sync: false
-      - key: MYSQL_USER
-        sync: false
-      - key: MYSQL_PASSWORD
-        sync: false
-      - key: MYSQL_DB
-        sync: false
+      - key: SMTP_HOST
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: 587
+      - key: IMAP_HOST
+        value: imap.gmail.com
       - key: JWT_SECRET_KEY
         generateValue: true
+      - key: USE_SQLITE
+        value: true
 
+  # Frontend Service
   - type: web
     name: hirebot-frontend
-    env: docker
-    dockerfilePath: ./frontend/Dockerfile
+    runtime: node
+    buildCommand: cd frontend && npm install && npm run build
+    staticPublishPath: ./frontend/dist
     envVars:
       - key: VITE_API_BASE_URL
         value: https://hirebot-backend.onrender.com/api/v1
