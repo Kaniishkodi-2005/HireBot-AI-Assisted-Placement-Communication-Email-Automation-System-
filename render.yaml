@@ -24,9 +24,8 @@ services:
         value: true
 
   # Frontend Service
-  - type: web
+  - type: static
     name: hirebot-frontend
-    runtime: node
     buildCommand: cd frontend && npm install && npm run build
     staticPublishPath: ./frontend/dist
     envVars:
